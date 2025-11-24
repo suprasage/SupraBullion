@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "enPXUD8TcNw=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\ba13c\\Downloads\\client_server\\SuprabullionApp\\SuprabullionApp.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\ba13c\\.nuget\\packages\\apimatic.core\\0.4.13\\apimatic.core.0.4.13.nupkg.sha512",
+    "C:\\Users\\ba13c\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\8.0.0\\microsoft.bcl.asyncinterfaces.8.0.0.nupkg.sha512",
+    "C:\\Users\\ba13c\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.1\\microsoft.extensions.dependencyinjection.abstractions.8.0.1.nupkg.sha512",
+    "C:\\Users\\ba13c\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\8.0.1\\microsoft.extensions.logging.abstractions.8.0.1.nupkg.sha512",
+    "C:\\Users\\ba13c\\.nuget\\packages\\microsoft.json.pointer\\2.3.0\\microsoft.json.pointer.2.3.0.nupkg.sha512",
+    "C:\\Users\\ba13c\\.nuget\\packages\\newtonsoft.json\\13.0.1\\newtonsoft.json.13.0.1.nupkg.sha512",
+    "C:\\Users\\ba13c\\.nuget\\packages\\paypalserversdk\\2.0.0\\paypalserversdk.2.0.0.nupkg.sha512",
+    "C:\\Users\\ba13c\\.nuget\\packages\\polly\\7.2.3\\polly.7.2.3.nupkg.sha512"
+  ],
+  "logs": []
+}
