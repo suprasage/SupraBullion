@@ -1,8 +1,6 @@
-=======================================================================================================
-Version 1.0.5: Suprabullion C#
-=======================================================================================================
+## Version 1.0.5: Suprabullion C#
 ***
-Suprabullion has gone through changes from the original database as a crypto currensy. 
+Suprabullion has gone through changes from the original database as a crypto currency. 
 In order to keep the vision around SupraSage has decided to implement a C# version, 
 this is for The Suns!
 ***
