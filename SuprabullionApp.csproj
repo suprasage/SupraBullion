@@ -9,10 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-<<<<<<< HEAD
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-=======
->>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
     <PackageReference Include="PayPalServerSDK" Version="2.0" />
   </ItemGroup>
 
