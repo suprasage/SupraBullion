@@ -23,7 +23,11 @@ namespace ServerApp
 
     public static class PayPalConfig
     {
+<<<<<<< HEAD
         public static Credential Sandbox = new Credential { UserName = "YourLiveClientId", Password = "YourLiveClientSecret" };
+=======
+        public static Credential Sandbox = new Credential { UserName = "YourSandboxClientId", Password = "YourSandboxClientSecret" };
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
         public static Credential Live = new Credential { UserName = "YourLiveClientId", Password = "YourLiveClientSecret" };
     }
 
@@ -418,6 +422,7 @@ namespace ServerApp
         }
     }
 
+<<<<<<< HEAD
     // New: Config class for app settings
     public class AppConfig
     {
@@ -471,30 +476,53 @@ namespace ServerApp
             Directory.CreateDirectory(PeersPath);
             LoadPeers();
             listener = new TcpListener(IPAddress.Any, config.Port);
+=======
+    // Peer Networking class with enhanced receipt sending
+    public class PeerNetwork
+    {
+        private TcpListener listener;
+        private List<string> knownPeers = new List<string>(); // List of peer IPs:ports
+        private Blockchain blockchain;
+        private string myPeerId;
+
+        public PeerNetwork(Blockchain bc, string peerId, int port)
+        {
+            blockchain = bc;
+            myPeerId = peerId;
+            listener = new TcpListener(IPAddress.Any, port);
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
         }
 
         public void AddPeer(string peerAddress)
         {
+<<<<<<< HEAD
             if (!knownPeers.Contains(peerAddress))
             {
                 knownPeers.Add(peerAddress);
                 SavePeers();
             }
+=======
+            knownPeers.Add(peerAddress);
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
         }
 
         public async Task StartAsync()
         {
+<<<<<<< HEAD
             if (config.EnablePortForwarding)
             {
                 await ForwardPort(config.Port);
             }
 
+=======
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
             listener.Start();
             Console.WriteLine($"Peer {myPeerId} listening on port {((IPEndPoint)listener.LocalEndpoint).Port}");
 
             while (true)
             {
                 TcpClient client = await listener.AcceptTcpClientAsync();
+<<<<<<< HEAD
                 _ = HandleClientAsync(client);
             }
         }
@@ -577,6 +605,12 @@ namespace ServerApp
         }
 
 
+=======
+                _ = HandleClientAsync(client); // Fire and forget
+            }
+        }
+
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
         private async Task HandleClientAsync(TcpClient client)
         {
             using (NetworkStream stream = client.GetStream())
@@ -591,10 +625,18 @@ namespace ServerApp
                 }
                 else
                 {
+<<<<<<< HEAD
                     message = "Empty Response";
                     Console.WriteLine("ReadLine for client returns Null response.");
                 }
                 if (message != null)
+=======
+                    // Handle the null case, e.g., assign a default value or throw an exception
+                    message = "Empty Response";
+                    Console.WriteLine("ReadLine for client returns Null response.");
+                }
+                if (message != null) // Null check
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
                 {
                     if (message.StartsWith("CHAIN:"))
                     {
@@ -612,7 +654,11 @@ namespace ServerApp
             }
         }
 
+<<<<<<< HEAD
         public async Task NotifyPeersAsync(string message, Block? block = null)
+=======
+        public async Task NotifyPeersAsync(string message, Block? block = null) // Nullable parameter
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
         {
             foreach (var peer in knownPeers)
             {
@@ -625,13 +671,24 @@ namespace ServerApp
                     using (StreamWriter writer = new StreamWriter(stream) { AutoFlush = true })
                     {
                         await writer.WriteLineAsync(message);
+<<<<<<< HEAD
                         if (block != null && block.Lock)
                         {
                             string? originationHash = blockchain.GetOriginationForLockedBlock(block.BlockId);
+=======
+                        // If block is locked, send receipt to origination and receiver
+                        if (block != null && block.Lock)
+                        {
+                            string? originationHash = blockchain.GetOriginationForLockedBlock(block.BlockId); // Nullable
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
                             if (!string.IsNullOrEmpty(originationHash))
                             {
                                 await writer.WriteLineAsync($"RECEIPT:{JsonConvert.SerializeObject(block)} to {originationHash}");
                             }
+<<<<<<< HEAD
+=======
+                            // Assume receiver is from transactions; for simplicity, send to all known peers as "receivers"
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
                             await writer.WriteLineAsync($"RECEIPT:{JsonConvert.SerializeObject(block)} to receivers");
                         }
                     }
@@ -643,6 +700,7 @@ namespace ServerApp
                 }
             }
         }
+<<<<<<< HEAD
 
         // New: Save peers to files with limit
         private void SavePeers()
@@ -685,6 +743,8 @@ namespace ServerApp
                 }
             }
         }
+=======
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
     }
 
     class Program
@@ -696,6 +756,7 @@ namespace ServerApp
 
         static async Task Main(string[] args)
         {
+<<<<<<< HEAD
             // New: Load config
             var config = AppConfig.Load();
 
@@ -703,6 +764,12 @@ namespace ServerApp
             peerNetwork = new PeerNetwork(blockchain, config);
             peerNetwork.AddPeer("127.0.0.1:8081"); // Example peer
             _ = peerNetwork.StartAsync();
+=======
+            // Initialize peer network (example: run on port 8080, peer ID "Peer1")
+            peerNetwork = new PeerNetwork(blockchain, "Peer1", 8080);
+            peerNetwork.AddPeer("127.0.0.1:8081"); // Add another peer
+            _ = peerNetwork.StartAsync(); // Start listening in background
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
 
             // Handle Ctrl+C to exit gracefully
             Console.CancelKeyPress += (sender, e) =>

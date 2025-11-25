@@ -1,6 +1,10 @@
 {
   "version": 2,
+<<<<<<< HEAD
   "dgSpecHash": "YvBbjUQZKAs=",
+=======
+  "dgSpecHash": "enPXUD8TcNw=",
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
   "success": true,
   "projectFilePath": "C:\\Users\\ba13c\\Downloads\\client_server\\SuprabullionApp\\SuprabullionApp.csproj",
   "expectedPackageFiles": [
@@ -9,7 +13,11 @@
     "C:\\Users\\ba13c\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.1\\microsoft.extensions.dependencyinjection.abstractions.8.0.1.nupkg.sha512",
     "C:\\Users\\ba13c\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\8.0.1\\microsoft.extensions.logging.abstractions.8.0.1.nupkg.sha512",
     "C:\\Users\\ba13c\\.nuget\\packages\\microsoft.json.pointer\\2.3.0\\microsoft.json.pointer.2.3.0.nupkg.sha512",
+<<<<<<< HEAD
     "C:\\Users\\ba13c\\.nuget\\packages\\newtonsoft.json\\13.0.4\\newtonsoft.json.13.0.4.nupkg.sha512",
+=======
+    "C:\\Users\\ba13c\\.nuget\\packages\\newtonsoft.json\\13.0.1\\newtonsoft.json.13.0.1.nupkg.sha512",
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
     "C:\\Users\\ba13c\\.nuget\\packages\\paypalserversdk\\2.0.0\\paypalserversdk.2.0.0.nupkg.sha512",
     "C:\\Users\\ba13c\\.nuget\\packages\\polly\\7.2.3\\polly.7.2.3.nupkg.sha512"
   ],

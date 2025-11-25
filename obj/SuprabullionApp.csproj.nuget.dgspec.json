@@ -44,10 +44,13 @@
         "net10.0": {
           "targetAlias": "net10.0",
           "dependencies": {
+<<<<<<< HEAD
             "Newtonsoft.Json": {
               "target": "Package",
               "version": "[13.0.4, )"
             },
+=======
+>>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
             "PayPalServerSDK": {
               "target": "Package",
               "version": "[2.0.0, )"
