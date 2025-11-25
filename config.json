@@ -1,0 +1,5 @@
+{
+  "EnablePortForwarding": false,
+  "Port": 8080,
+  "PeerId": "Peer1"
+}
