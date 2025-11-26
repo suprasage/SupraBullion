@@ -740,7 +740,7 @@ namespace ServerApp
             {
                 case "buy":
                     if (args.Length < 3 || args[1] == null || args[2] == null) { Console.WriteLine("Usage: buy <buyer> <amount> [schema]"); return; }
-                    string schema = args.Length >= 4 ? args[3] : null;
+                    string? schema = args.Length >= 4 ? args[3] : null;
                     await BuyFromReserve(args[1], decimal.Parse(args[2]), schema);
                     break;
                 case "sell":
@@ -815,7 +815,7 @@ namespace ServerApp
         }
 
         // Updated functions to handle lock conditions
-        public static async Task BuyFromReserve(string buyer, decimal amount, string schema = null)
+        public static async Task BuyFromReserve(string buyer, decimal amount, string? schema = null)
         {
             try
             {
