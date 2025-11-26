@@ -115,3 +115,130 @@ Run commands in interactive mode (`dotnet run`) or as args. All commands are cas
 5. Lock a block: `dotnet run addlock 1`
 6. Query a block: `dotnet run query 1`
 7. Validate: `dotnet run validate`
+
+---------------------------------------------------------------------------------------
+Steps for Upgraded Database querying and Lock Extension
+---------------------------------------------------------------------------------------
+
+## Blockchain Application with Database and Lock Constraints - Documentation
+
+## Overview
+This is an upgraded version of a C# blockchain application that simulates a cryptocurrency system with peer-to-peer networking, PayPal integration, and blockchain management. Key upgrades include:
+- **Database Functionality**: A new `Database` class (in `DataBaseApp` namespace) that supports SQL-like queries (CREATE, SELECT, INSERT, UPDATE, DELETE) on JSON-based "tables" stored in the `./database/` directory.
+- **Lock Constraints**: A new `Constraint` class (in `LockApp` namespace) that manages locks with JSON schemas. Schemas are appended to receipts as "formData" and enforced during transactions (e.g., transfers or sells) to ensure constraints are met before fulfillment.
+- **Enhanced CLI**: The `ExecuteCommand` switch in `Program.cs` now supports quoted strings for queries, locks, and schemas, enabling dynamic database interactions and constraint enforcement.
+- **Integration**: Transactions (buy, sell, transfer) now check for locks and schemas, temporarily storing matching receipt IDs in the `LockChain` until constraints are fulfilled. Errors are logged to the console.
+
+The application uses `Newtonsoft.Json` for JSON manipulation (e.g., reading/writing files, deserializing objects). It runs as a console CLI with commands for blockchain operations, database queries, and lock management.
+
+### Prerequisites
+- .NET environment with `Newtonsoft.Json` NuGet package installed.
+- Directories: `./receipts/`, `./blocks/`, `./database/`, `./peers/`, `./database/locks/` (auto-created).
+- PayPal sandbox credentials for buy/sell operations.
+
+## Architecture
+- **Program.cs**: Entry point with CLI loop. Instantiates `Blockchain`, `PeerNetwork`, `Database`, and `Constraint` classes. Handles user commands via `ExecuteCommand`.
+- **Blockchain.cs**: Core blockchain logic (blocks, transactions, mining, locks). Writes receipts and blocks as JSON files.
+- **PeerNetwork.cs**: Manages peer connections and notifications.
+- **Database.cs** (`DataBaseApp` namespace): Parses and executes SQL-like queries on JSON files. Tables are subdirectories under `./database/`, with `schema.json` defining structure.
+- **Locks.cs** (`LockApp` namespace): Manages `Lock` objects with schemas. Enforces constraints by checking receipts for matching "formData".
+- **Interactions**:
+  - CLI commands trigger blockchain operations or delegate to `Database`/`Constraint`.
+  - Transactions check `Constraint.LockChain` for schemas and validate against receipts.
+  - JSON files are used for persistence (e.g., receipts with appended schemas).
+
+## New Features
+1. **Database Queries**:
+   - Supports basic SQL-like syntax for JSON-based tables.
+   - Queries return JSON responses (status or data).
+   - Example: `query "SELECT * FROM receipts WHERE ID=1"` executes a SELECT and prints results.
+
+2. **Lock Schemas and Constraints**:
+   - Locks can have JSON schemas appended to receipts.
+   - During transfers/sells, the system checks for matching receipts and enforces schemas (e.g., required fields).
+   - Constraints must be fulfilled before transactions complete; otherwise, errors are logged, and the transaction is pending.
+
+3. **Enhanced Commands**:
+   - `query`: Accepts quoted SQL strings or integer BlockIDs.
+   - `addlock`: Accepts quoted schemas or integer BlockIDs.
+   - `updatelock`: New command for updating lock schemas.
+   - `buy`: Now accepts an optional schema parameter for receipts.
+
+4. **JSON Manipulation with Newtonsoft.Json**:
+   - Reading: `JsonConvert.DeserializeObject<T>(File.ReadAllText(path))`.
+   - Writing: `File.WriteAllText(path, JsonConvert.SerializeObject(obj, Formatting.Indented))`.
+   - Manipulation: Deserialize to `JObject`, modify properties (e.g., add "formData"), then serialize.
+
+## API/Command Reference
+Commands are entered in the CLI (e.g., `> buy Alice 50.00 "{\"key\": \"value\"}"`). All commands are case-insensitive.
+
+| Command | Syntax | Description | Example |
+|---------|--------|-------------|---------|
+| `buy` | `buy <buyer> <amount> [schema]` | Buys from reserve via PayPal. Optional schema adds to receipt. | `buy Alice 50.00 "{\"requiredField\": \"value\"}"` |
+| `sell` | `sell <seller> <amount>` | Sells to reserve. Checks constraints. | `sell Bob 25.00` |
+| `transfer` | `transfer <sender> <receiver> <amount>` | P2P transfer. Checks constraints. | `transfer Alice Bob 10.00` |
+| `mine` | `mine` | Mines pending transactions. | `mine` |
+| `validate` | `validate` | Validates blockchain. | `validate` |
+| `register` | `register <user> <ip> <peersHash> <privateKey> <publicKey>` | Registers a user. | `register Alice 127.0.0.1 hash priv pub` |
+| `addlock` | `addlock <blockid>` or `addlock "<schema>" [blockid]` | Adds lock by ID or with schema. | `addlock 1` or `addlock "{\"key\": \"value\"}" 1` |
+| `removelock` | `removelock <blockid>` | Removes lock by ID. | `removelock 1` |
+| `query` | `query <blockid>` or `query "<sql_query>"` | Queries block by ID or executes SQL. | `query 1` or `query "SELECT * FROM receipts WHERE ID=1"` |
+| `updatelock` | `updatelock "<schema>"` | Updates lock schema. | `updatelock "{\"newKey\": \"newValue\"}"` |
+
+## Classes and Methods Summary
+### Program.cs
+- **ExecuteCommand(string action, string[] args)**: Routes commands to methods or classes.
+- **BuyFromReserve(string buyer, decimal amount, string schema)**: Handles buys, adds schema to receipt.
+- **SellToReserve(string seller, decimal amount)**: Handles sells, enforces constraints.
+- **PeerToPeerTransfer(string sender, string receiver, decimal amount)**: Handles transfers, enforces constraints.
+
+### Database.cs (DataBaseApp)
+- **Database(Query qry)**: Constructor; sets up `./database/`.
+- **StringParser(Query qry)**: Parses query string and routes to exec methods.
+- **DbCreateParse/DbSelectParse/etc.**: Parse SQL tokens.
+- **DbSelectExec/DbInsertExec/etc.**: Execute operations on JSON files.
+
+### Locks.cs (LockApp)
+- **Lock(int blockId, string schema)**: Constructor for locks with schema.
+- **Constraint()**: Constructor; loads existing locks.
+- **AddSchemaToReceipt(int blockId, string schema)**: Appends schema to receipt JSON.
+- **UpdateLockSchema(string schema)**: Adds/updates lock with schema.
+- **EnforceConstraints(int blockId, string sender, string receiver, decimal amount)**: Checks receipts for schema matches; logs errors if not fulfilled.
+
+## Testing Steps
+Follow these steps to test the upgraded features. Run the application (`dotnet run`) and use the CLI. Ensure directories exist and PayPal is configured for buy/sell tests. Expected outputs are noted.
+
+### 1. **Setup and Basic Blockchain Test**
+   - Start the app: `> validate` (should output "Blockchain valid: True" if no blocks exist).
+   - Mine a block: `> mine` (outputs mining details).
+   - Register a user: `> register Alice 127.0.0.1 hash priv pub` (outputs registration details).
+
+### 2. **Test Database Queries**
+   - Create a table: `> query "CREATE TABLE receipts (ID int, Name varchar)"` (Expected: JSON status "success"; creates `./database/receipts/schema.json`).
+   - Insert data: `> query "INSERT INTO receipts VALUES (1, 'TestReceipt')"` (Expected: JSON status "success"; creates a JSON file in `./database/receipts/`).
+   - Select data: `> query "SELECT * FROM receipts WHERE ID=1"` (Expected: JSON with data array containing the inserted record).
+   - Update data: `> query "UPDATE receipts SET Name='Updated' WHERE ID=1"` (Expected: JSON status "success"; check file for changes).
+   - Delete data: `> query "DELETE FROM receipts WHERE ID=1"` (Expected: JSON status "success"; file should be deleted).
+
+### 3. **Test Locks and Schemas**
+   - Add a lock with schema: `> addlock "{\"requiredField\": \"value\"}" 1` (Expected: Schema added to receipt `./receipts/block_1.json` under "formData").
+   - Update lock schema: `> updatelock "{\"newField\": \"newValue\"}"` (Expected: New lock file in `./database/locks/`; console logs update).
+   - Query a block: `> query 1` (Expected: JSON block data, including any schema in receipts).
+
+### 4. **Test Transactions with Constraints**
+   - Buy with schema: `> buy Alice 50.00 "{\"constraint\": \"met\"}"` (Expected: PayPal flow (mocked); schema added to new receipt).
+   - Sell with constraints: First, ensure a lock exists. `> sell Alice 25.00` (If constraints not met, console logs errors like "Constraints not fulfilled"; otherwise, proceeds).
+   - Transfer with constraints: `> transfer Alice Bob 10.00` (Similar to sell; checks receipts for matching "formData". If fulfilled, logs "Constraints fulfilled"; else, pending with errors).
+   - Verify receipts: Check `./receipts/block_*.json` for "formData" appended schemas.
+
+### 5. **Edge Cases and Validation**
+   - Invalid query: `> query "INVALID"` (Expected: JSON error message).
+   - Lock without schema: `> addlock 2` (Expected: Standard lock added without schema).
+   - Constraint failure: Attempt transfer without matching receipts (Expected: Console errors; transaction doesn't complete).
+   - Peer notification: After mining/locking, check for network logs (requires peers configured).
+
+### Troubleshooting
+- **JSON Errors**: Ensure schemas are valid JSON strings (e.g., no unescaped quotes).
+- **File Not Found**: Run commands in sequence (e.g., create table before inserting).
+- **PayPal Issues**: Use sandbox; check credentials in `PayPalConfig`.
+- **Logs**: All operations log to console; check for exceptions.
