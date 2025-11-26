@@ -776,6 +776,25 @@ namespace ServerApp
             }
         }
 
+        private static string ExtractQuotedString(string[] args)
+        {
+            if (args.Length < 2 || !args[1].StartsWith("\""))
+            {
+                throw new ArgumentException("Invalid arguments provided.");
+            }
+            var parts = new List<string>();
+            for (int i = 1; i < args.Length; i++)
+            {
+                parts.Add(args[i]);
+                if (args[i].EndsWith("\"")) break;
+            }
+            string combined = string.Join(" ", parts);
+            if (combined.StartsWith("\"") && combined.EndsWith("\""))
+            {
+                return combined.Trim('"');
+            }
+            throw new ArgumentException("Malformed quoted string.");
+        }
 
         private static async Task ExecuteCommand(string action, string[] args)
         {
@@ -830,25 +849,40 @@ namespace ServerApp
                     RegisterUser(args[1], args[2], args[3], args[4], args[5]);
                     break;
                 case "addlock":
-                    if (args.Length < 2) { PrettyPrint.PrintInfo("Usage: addlock <blockid> or addlock \"<schema>\""); return; }
-                    if (args[1].StartsWith("\"") && args[1].EndsWith("\""))
+                    if (args.Length < 2) { PrettyPrint.PrintError("Usage: addlock <blockid> or addlock \"<schema>\" [blockid]"); return; }
+                    string schemaStr = ExtractQuotedString(args);
+                    if (schemaStr != null)
                     {
-                        string schemaStr = args[1].Trim('"');
-                        constraint.AddSchemaToReceipt(int.Parse(args.Length >= 3 ? args[2] : "0"), schemaStr); // Assume blockId if provided
+                        int blockIdForLock = args.Length > 2 && int.TryParse(args[args.Length - 1], out int bid) ? bid : 0; // Optional blockId at end
+                        constraint.AddSchemaToReceipt(blockIdForLock, schemaStr);
                     }
                     else
                     {
-                        blockchain.AddLock(int.Parse(args[1]));
+                        if (int.TryParse(args[1], out int blockId))
+                        {
+                            blockchain.AddLock(blockId);
+                        }
+                        else
+                        {
+                            PrettyPrint.PrintError("Invalid block ID or malformed schema.");
+                        }
                     }
                     if (peerNetwork != null)
                     {
-                        await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}");
+                        await peerNetwork.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}");
                     }
                     break;
                 case "updatelock":
-                    if (args.Length < 2 || !args[1].StartsWith("\"") || !args[1].EndsWith("\"")) { Console.WriteLine("Usage: updatelock \"<schema>\""); return; }
-                    string updateSchema = args[1].Trim('"');
-                    constraint.UpdateLockSchema(updateSchema);
+                    if (args.Length < 2) { PrettyPrint.PrintError("Usage: updatelock \"<schema>\""); return; }
+                    string updateSchema = ExtractQuotedString(args);
+                    if (updateSchema != null)
+                    {
+                        constraint.UpdateLockSchema(updateSchema);
+                    }
+                    else
+                    {
+                        PrettyPrint.PrintError("Malformed schema string.");
+                    }
                     break;
                 case "removelock":
                     if (args.Length < 2) { PrettyPrint.PrintInfo("Usage: removelock <blockid>"); return; }
@@ -859,17 +893,31 @@ namespace ServerApp
                     }
                     break;
                 case "query":
-                    if (args.Length < 2) { PrettyPrint.PrintInfo("Usage: query <blockid> or query \"<sql_query>\""); return; }
-                    if (args[1].StartsWith("\"") && args[1].EndsWith("\""))
+                    if (args.Length < 2) { PrettyPrint.PrintError("Usage: query <blockid> or query \"<sql_query>\""); return; }
+                    try
                     {
-                        string queryStr = args[1].Trim('"');
-                        database.UserQuery = new Query(queryStr, QueryType.SELECT); // Assume SELECT for simplicity; parse inside
-                        string result = database.StringParser(database.UserQuery);
-                        Console.WriteLine(result);
+                        string queryStr = ExtractQuotedString(args);
+                        if (queryStr != null)
+                        {
+                            database.UserQuery = new Query(queryStr, QueryType.SELECT); // Parse type inside StringParser if needed
+                            string result = database.StringParser(database.UserQuery);
+                            PrettyPrint.PrintInfo(result);
+                        }
+                        else
+                        {
+                            if (int.TryParse(args[1], out int blockId))
+                            {
+                                blockchain.QueryBlock(blockId);
+                            }
+                            else
+                            {
+                                PrettyPrint.PrintError("Invalid block ID or malformed query.");
+                            }
+                        }
                     }
-                    else
+                    catch (ArgumentException ex)
                     {
-                        blockchain.QueryBlock(int.Parse(args[1]));
+                        PrettyPrint.PrintError($"Query error: {ex.Message}");
                     }
                     break;
                 default:
