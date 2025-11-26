@@ -759,12 +759,12 @@ namespace ServerApp
                 System.Environment.Exit(0); // Fixed: Qualify with System
             };
 
-            PrettyPrint.PrintInfo("Blockchain CLI started. Type commands (e.g., 'buy Alice 50.00') or Ctrl+C to exit.");
+            PrettyPrint.PrintInfo("SupraBullion CLI: Type commands or Ctrl+C exit.");
 
             // Interactive command loop
             while (true)
             {
-                Console.Write("> ");
+                Console.Write("\n> ");
                 string? input = Console.ReadLine();
                 if (string.IsNullOrEmpty(input)) continue;
 
@@ -781,6 +781,27 @@ namespace ServerApp
         {
             switch (action)
             {
+                case "help":
+                    PrettyPrint.PrintInfo("Available Commands:");
+                    Console.WriteLine("Blockchain Operations:");
+                    Console.WriteLine("  buy <buyer> <amount> [schema] - Buy from reserve via PayPal. Optional schema adds to receipt.");
+                    Console.WriteLine("  sell <seller> <amount> - Sell to reserve. Checks constraints.");
+                    Console.WriteLine("  transfer <sender> <receiver> <amount> - P2P transfer. Checks constraints.");
+                    Console.WriteLine("  mine - Mine pending transactions.");
+                    Console.WriteLine("  validate - Validate the blockchain.");
+                    Console.WriteLine("  register <user> <ip> <peersHash> <privateKey> <publicKey> - Register a user.");
+                    PrettyPrint.PrintInfo("Lock Management:");
+                    Console.WriteLine("  addlock <blockid> or addlock \"<schema>\" [blockid] - Add lock by ID or with schema.");
+                    Console.WriteLine("  removelock <blockid> - Remove lock by ID.");
+                    Console.WriteLine("  updatelock \"<schema>\" - Update lock schema.");
+                    PrettyPrint.PrintInfo("Database Queries:");
+                    Console.WriteLine("  query <blockid> or query \"<sql_query>\" - Query block by ID or execute SQL (e.g., SELECT/INSERT).");
+                    PrettyPrint.PrintInfo("Other:");
+                    Console.WriteLine("  help - Show this help message.");
+                    PrettyPrint.PrintInfo("Examples:");
+                    Console.WriteLine("  > buy Alice 50.00 \"{\\\"key\\\": \\\"value\\\"}\"");
+                    Console.WriteLine("  > query \"SELECT * FROM receipts WHERE ID=1\"");
+                    break;
                 case "buy":
                     if (args.Length < 3 || args[1] == null || args[2] == null) { PrettyPrint.PrintError("Usage: buy <buyer> <amount> [schema]"); return; }
                     string? schema = args.Length >= 4 ? args[3] : null;

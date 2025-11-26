@@ -1,3 +1,5 @@
+<img width="4498" height="1252" alt="suprabullion_logo" src="https://github.com/user-attachments/assets/aa41883e-8c97-4137-815d-8ceb9cac2795" />
+
 ## Overview
 SuprabullionApp is a C# console application implementing a peer-to-peer blockchain with PayPal integration, user registration, block locking, and querying. It features an interactive command-line interface (CLI), peer networking with persistence, config file support, and manual UPnP port forwarding for NAT traversal. The app uses SHA256 hashing for security, stores data in JSON format, and supports RSA encryption for user data.
 
@@ -245,8 +247,8 @@ Follow these steps to test the upgraded features. Run the application (`dotnet r
 
 ## Contribution Git steps 
 ```bash
-git pull origin master --allow-unrelated-histories  
 git remote add origin 'https://github.com/suprasage/SupraBullion.git'
+git pull origin master --allow-unrelated-histories  
 git add .
 git commit -m "message"
 git push -u origin master 
