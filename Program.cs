@@ -29,6 +29,49 @@ namespace ServerApp
         public static Credential Live = new Credential { UserName = "YourLiveClientId", Password = "YourLiveClientSecret" };
     }
 
+    public static class PrettyPrint
+    {
+        public static void PrintSuccess(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Green; // Green for timestamp
+            Console.Write($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}]: ");
+            Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.White; // Bold white for message
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+
+        public static void PrintError(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Red; // Red for timestamp
+            Console.Write($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}]: ");
+            Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.White; // Bold white for message
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+
+        public static void PrintInfo(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan; // Cyan for timestamp
+            Console.Write($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}]: ");
+            Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.White; // Bold white for message
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+
+        public static void PrintWarning(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow; // Yellow for timestamp
+            Console.Write($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}]: ");
+            Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.White; // Bold white for message
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+    }
+
     // Simple Transaction class for the blockchain
     public class Transaction
     {
@@ -138,7 +181,7 @@ namespace ServerApp
                 Nonce++;
                 Hash = CalculateHash();
             }
-            Console.WriteLine($"Block {Index} mined: {Hash}");
+            PrettyPrint.PrintInfo($"Block {Index} mined: {Hash}");
         }
     }
 
@@ -185,14 +228,14 @@ namespace ServerApp
         {
             string filePath = Path.Combine(ReceiptsPath, $"block_{block.Index}.json");
             File.WriteAllText(filePath, JsonConvert.SerializeObject(block, Formatting.Indented));
-            Console.WriteLine($"Receipt written: {filePath}");
+            PrettyPrint.PrintSuccess($"Receipt written: {filePath}");
         }
 
         private void WriteBlock(Block block) // New: Write block to BlocksPath
         {
             string filePath = Path.Combine(BlocksPath, $"block_{block.BlockId}.json");
             File.WriteAllText(filePath, JsonConvert.SerializeObject(block, Formatting.Indented));
-            Console.WriteLine($"Block written: {filePath}");
+            PrettyPrint.PrintSuccess($"Block written: {filePath}");
         }
 
         public bool IsChainValid()
@@ -215,7 +258,7 @@ namespace ServerApp
         {
             var regBlock = new RegistrationBlock(user, ip, peersHash, privateKey, publicKey);
             Registrations.Add(regBlock);
-            Console.WriteLine($"User {user} registered with block hash: {regBlock.Hash}");
+            PrettyPrint.PrintInfo($"User {user} registered with block hash: {regBlock.Hash}");
         }
 
         // New: AddLock function
@@ -229,7 +272,7 @@ namespace ServerApp
                 var block = JsonConvert.DeserializeObject<Block>(json);
                 if (block != null && block.Lock && block.BlockId == blockId) // Null check
                 {
-                    Console.WriteLine($"Block {blockId} is already locked.");
+                    PrettyPrint.PrintInfo($"Block {blockId} is already locked.");
                     return;
                 }
             }
@@ -238,7 +281,7 @@ namespace ServerApp
             var targetBlock = Chain.FirstOrDefault(b => b.BlockId == blockId);
             if (targetBlock == null || !targetBlock.Lock) // Only lock if not already locked
             {
-                Console.WriteLine($"Block {blockId} not found or already locked.");
+                PrettyPrint.PrintInfo($"Block {blockId} not found or already locked.");
                 return;
             }
 
@@ -248,7 +291,7 @@ namespace ServerApp
             Chain.Add(lockBlock);
             WriteReceipt(lockBlock);
             WriteBlock(lockBlock);
-            Console.WriteLine($"Lock added for block {blockId}, new block: {lockBlock.Index}");
+            PrettyPrint.PrintSuccess($"Lock added for block {blockId}, new block: {lockBlock.Index}");
         }
 
         // New: RemoveLock function
@@ -268,11 +311,11 @@ namespace ServerApp
                     Chain.Add(unlockBlock);
                     WriteReceipt(unlockBlock);
                     WriteBlock(unlockBlock);
-                    Console.WriteLine($"Lock removed for block {blockId}, new block: {unlockBlock.Index}");
+                    PrettyPrint.PrintSuccess($"Lock removed for block {blockId}, new block: {unlockBlock.Index}");
                     return;
                 }
             }
-            Console.WriteLine($"No lock found for block {blockId}.");
+            PrettyPrint.PrintInfo($"No lock found for block {blockId}.");
         }
 
         // New: Get origination public key for locked block
@@ -306,12 +349,12 @@ namespace ServerApp
                 var block = JsonConvert.DeserializeObject<Block>(json);
                 if (block != null && block.BlockId == blockId) // Null check
                 {
-                    Console.WriteLine($"Block Data for BlockId {blockId}:");
-                    Console.WriteLine(JsonConvert.SerializeObject(block, Formatting.Indented));
+                    PrettyPrint.PrintSuccess($"Block Data for BlockId {blockId}:");
+                    PrettyPrint.PrintInfo(JsonConvert.SerializeObject(block, Formatting.Indented));
                     return;
                 }
             }
-            Console.WriteLine($"Block with BlockId {blockId} not found.");
+            PrettyPrint.PrintInfo($"Block with BlockId {blockId} not found.");
         }
     }
 
@@ -438,7 +481,7 @@ namespace ServerApp
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading config: {ex.Message}. Using defaults.");
+                    PrettyPrint.PrintError($"Error loading config: {ex.Message}. Using defaults.");
                     return new AppConfig();
                 }
             }
@@ -447,7 +490,7 @@ namespace ServerApp
                 // Create default config
                 var defaultConfig = new AppConfig();
                 File.WriteAllText(configPath, JsonConvert.SerializeObject(defaultConfig, Formatting.Indented));
-                Console.WriteLine($"Created default config at {configPath}. Edit and restart.");
+                PrettyPrint.PrintInfo($"Created default config at {configPath}. Edit and restart.");
                 return defaultConfig;
             }
         }
@@ -549,18 +592,18 @@ namespace ServerApp
                         var responseMsg = await httpClient.SendAsync(request);
                         if (responseMsg.IsSuccessStatusCode)
                         {
-                            Console.WriteLine($"Port {port} forwarded successfully via UPnP.");
+                            PrettyPrint.PrintSuccess($"Port {port} forwarded successfully via UPnP.");
                         }
                         else
                         {
-                            Console.WriteLine($"Port forwarding failed: {responseMsg.StatusCode}");
+                            PrettyPrint.PrintError($"Port forwarding failed: {responseMsg.StatusCode}");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Port forwarding failed: {ex.Message}");
+                PrettyPrint.PrintError($"Port forwarding failed: {ex.Message}");
             }
         }
 
@@ -602,13 +645,13 @@ namespace ServerApp
                     {
                         string chainData = message.Substring(6);
                         File.WriteAllText(Path.Combine(blockchain.ReceiptsPath, "received_chain.json"), chainData);
-                        Console.WriteLine("Received and saved chain data.");
+                        PrettyPrint.PrintInfo("Received and saved chain data.");
                     }
                     else if (message.StartsWith("RECEIPT:"))
                     {
                         string receiptData = message.Substring(8);
                         File.WriteAllText(Path.Combine(blockchain.ReceiptsPath, "received_receipt.json"), receiptData);
-                        Console.WriteLine("Received and saved receipt data.");
+                        PrettyPrint.PrintInfo("Received and saved receipt data.");
                     }
                 }
             }
@@ -641,7 +684,7 @@ namespace ServerApp
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Failed to notify peer {peer}: {ex.Message}");
+                    PrettyPrint.PrintError($"Failed to notify peer {peer}: {ex.Message}");
                 }
             }
         }
@@ -683,7 +726,7 @@ namespace ServerApp
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading peers from {file}: {ex.Message}");
+                    PrettyPrint.PrintError($"Error loading peers from {file}: {ex.Message}");
                 }
             }
         }
@@ -712,11 +755,11 @@ namespace ServerApp
             Console.CancelKeyPress += (sender, e) =>
             {
                 e.Cancel = true; // Prevent abrupt exit
-                Console.WriteLine("\nExiting... Goodbye!");
+                PrettyPrint.PrintSuccess("Exiting... Goodbye!");
                 System.Environment.Exit(0); // Fixed: Qualify with System
             };
 
-            Console.WriteLine("Blockchain CLI started. Type commands (e.g., 'buy Alice 50.00') or Ctrl+C to exit.");
+            PrettyPrint.PrintInfo("Blockchain CLI started. Type commands (e.g., 'buy Alice 50.00') or Ctrl+C to exit.");
 
             // Interactive command loop
             while (true)
@@ -739,16 +782,16 @@ namespace ServerApp
             switch (action)
             {
                 case "buy":
-                    if (args.Length < 3 || args[1] == null || args[2] == null) { Console.WriteLine("Usage: buy <buyer> <amount> [schema]"); return; }
+                    if (args.Length < 3 || args[1] == null || args[2] == null) { PrettyPrint.PrintError("Usage: buy <buyer> <amount> [schema]"); return; }
                     string? schema = args.Length >= 4 ? args[3] : null;
                     await BuyFromReserve(args[1], decimal.Parse(args[2]), schema);
                     break;
                 case "sell":
-                    if (args.Length < 3 || args[1] == null || args[2] == null) { Console.WriteLine("Usage: sell <seller> <amount>"); return; }
+                    if (args.Length < 3 || args[1] == null || args[2] == null) { PrettyPrint.PrintError("Usage: sell <seller> <amount>"); return; }
                     await SellToReserve(args[1], decimal.Parse(args[2]));
                     break;
                 case "transfer":
-                    if (args.Length < 4 || args[1] == null || args[2] == null || args[3] == null) { Console.WriteLine("Usage: transfer <sender> <receiver> <amount>"); return; }
+                    if (args.Length < 4 || args[1] == null || args[2] == null || args[3] == null) { PrettyPrint.PrintError("Usage: transfer <sender> <receiver> <amount>"); return; }
                     PeerToPeerTransfer(args[1], args[2], decimal.Parse(args[3]));
                     break;
                 case "mine":
@@ -759,14 +802,14 @@ namespace ServerApp
                     }
                     break;
                 case "validate":
-                    Console.WriteLine($"Blockchain valid: {blockchain.IsChainValid()}");
+                    PrettyPrint.PrintInfo($"Blockchain valid: {blockchain.IsChainValid()}");
                     break;
                 case "register":
                     if (args.Length < 6 || args[1] == null || args[2] == null || args[3] == null || args[4] == null || args[5] == null) { Console.WriteLine("Usage: register <user> <ip> <peersHash> <privateKey> <publicKey>"); return; }
                     RegisterUser(args[1], args[2], args[3], args[4], args[5]);
                     break;
                 case "addlock":
-                    if (args.Length < 2) { Console.WriteLine("Usage: addlock <blockid> or addlock \"<schema>\""); return; }
+                    if (args.Length < 2) { PrettyPrint.PrintInfo("Usage: addlock <blockid> or addlock \"<schema>\""); return; }
                     if (args[1].StartsWith("\"") && args[1].EndsWith("\""))
                     {
                         string schemaStr = args[1].Trim('"');
@@ -787,7 +830,7 @@ namespace ServerApp
                     constraint.UpdateLockSchema(updateSchema);
                     break;
                 case "removelock":
-                    if (args.Length < 2) { Console.WriteLine("Usage: removelock <blockid>"); return; }
+                    if (args.Length < 2) { PrettyPrint.PrintInfo("Usage: removelock <blockid>"); return; }
                     blockchain.RemoveLock(int.Parse(args[1]));
                     if (peerNetwork != null)
                     {
@@ -795,7 +838,7 @@ namespace ServerApp
                     }
                     break;
                 case "query":
-                    if (args.Length < 2) { Console.WriteLine("Usage: query <blockid> or query \"<sql_query>\""); return; }
+                    if (args.Length < 2) { PrettyPrint.PrintInfo("Usage: query <blockid> or query \"<sql_query>\""); return; }
                     if (args[1].StartsWith("\"") && args[1].EndsWith("\""))
                     {
                         string queryStr = args[1].Trim('"');
@@ -809,7 +852,7 @@ namespace ServerApp
                     }
                     break;
                 default:
-                    Console.WriteLine("Unknown action. Type 'help' for commands.");
+                    PrettyPrint.PrintWarning("Unknown action. Type 'help' for commands.");
                     break;
             }
         }
@@ -820,10 +863,10 @@ namespace ServerApp
             try
             {
                 var token = await PayPalAPI.AuthenticateAsync(environment);
-                if (string.IsNullOrEmpty(token)) { Console.WriteLine("Authentication failed."); return; }
+                if (string.IsNullOrEmpty(token)) { PrettyPrint.PrintError("Authentication failed."); return; }
                 // Proceed
                 var (paypalId, url) = await PayPalAPI.CreateOrderAsync(token, amount, "USD", environment, domain + "/payments/paypalOrderComplete", domain);
-                Console.WriteLine($"Redirect user to: {url}");
+                PrettyPrint.PrintInfo($"Redirect user to: {url}");
                 var status = await PayPalAPI.CaptureOrderAsync(token, paypalId, environment);
                 if (status == "COMPLETED")
                 {
@@ -856,12 +899,16 @@ namespace ServerApp
                             Console.WriteLine("Error: PeerNetwork returns Null Response while adding unlock block for reserve.");
                         }
                     }
-                    Console.WriteLine($"Buy from Reserve: {buyer} bought {amount} USD. Transaction added.");
+                    PrettyPrint.PrintSuccess($"Buy from Reserve: {buyer} bought {amount} USD. Transaction added.");
+                }
+                else
+                {
+                    PrettyPrint.PrintError("Buy failed: Payment not completed.");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error: in BuyFromReserve: {ex.Message}");
+                PrettyPrint.PrintError($"Error: in BuyFromReserve: {ex.Message}");
             }
         }
 
@@ -887,7 +934,7 @@ namespace ServerApp
                 {
                     await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}", newBlock); // Null check
                 } else 
-                { Console.WriteLine("Error: PeerNetwork returns Null Response while adding locked block for reserve."); }
+                { PrettyPrint.PrintError("Error: PeerNetwork returns Null Response while adding locked block for reserve."); }
             }
             else
             {
@@ -895,9 +942,9 @@ namespace ServerApp
                 {
                     await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}"); // Null check
                 } else 
-                { Console.WriteLine("Error: PeerNetwork returns Null Response while adding unlocked block for reserve."); }
+                { PrettyPrint.PrintError("Error: PeerNetwork returns Null Response while adding unlocked block for reserve."); }
             }
-            Console.WriteLine($"Sell to Reserve: {seller} sold {amount} USD. Transaction added.");
+            PrettyPrint.PrintSuccess($"Sell to Reserve: {seller} sold {amount} USD. Transaction added.");
         }
 
         public static void PeerToPeerTransfer(string sender, string receiver, decimal amount)
@@ -914,7 +961,7 @@ namespace ServerApp
             }
             var tx = new Transaction(sender, receiver, amount);
             blockchain.AddTransaction(tx);
-            Console.WriteLine($"P2P Transfer: {sender} sent {amount} USD to {receiver}. Transaction added.");
+            PrettyPrint.PrintSuccess($"P2P Transfer: {sender} sent {amount} USD to {receiver}. Transaction added.");
         }
 
         public static void RegisterUser(string user, string ip, string peersHash, string privateKey, string publicKey)
@@ -927,7 +974,7 @@ namespace ServerApp
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error with provided keys: {ex.Message}. Generating new RSA keys...");
+                PrettyPrint.PrintError($"Error with provided keys: {ex.Message}. Generating new RSA keys...");
                 
                 // Fallback: Generate new RSA keys (2048-bit)
                 using (RSACryptoServiceProvider rsa = new RSACryptoServiceProvider(2048))
@@ -941,14 +988,16 @@ namespace ServerApp
                         return;
                     }
                     
-                    Console.WriteLine("Generated Private Key (use securely):");
-                    Console.WriteLine(newPrivateKey);
-                    Console.WriteLine("Generated Public Key:");
-                    Console.WriteLine(newPublicKey);
+    
+                    PrettyPrint.PrintInfo("Generated Private Key (use securely):");
+                    PrettyPrint.PrintInfo(newPrivateKey);
+                    PrettyPrint.PrintInfo("Generated Public Key:");
+                    PrettyPrint.PrintInfo(newPublicKey);
                     
                     // Register with generated keys
                     var regBlock = new RegistrationBlock(user, ip, peersHash, newPrivateKey, newPublicKey);
                     blockchain.RegisterUser(user, ip, peersHash, newPrivateKey, newPublicKey);
+                    PrettyPrint.PrintSuccess($"User {user} registered with block hash: {regBlock.Hash}");
                 }
             }
         }

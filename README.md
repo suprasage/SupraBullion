@@ -117,7 +117,7 @@ Run commands in interactive mode (`dotnet run`) or as args. All commands are cas
 7. Validate: `dotnet run validate`
 
 ---------------------------------------------------------------------------------------
-Steps for Upgraded Database querying and Lock Extension
+Steps for Upgraded Database querying and Block Lock Extension
 ---------------------------------------------------------------------------------------
 
 ## Blockchain Application with Database and Lock Constraints - Documentation
@@ -242,3 +242,12 @@ Follow these steps to test the upgraded features. Run the application (`dotnet r
 - **File Not Found**: Run commands in sequence (e.g., create table before inserting).
 - **PayPal Issues**: Use sandbox; check credentials in `PayPalConfig`.
 - **Logs**: All operations log to console; check for exceptions.
+
+## Contribution Git steps 
+```bash
+git pull origin master --allow-unrelated-histories  
+git remote add origin 'https://github.com/suprasage/SupraBullion.git'
+git add .
+git commit -m "message"
+git push -u origin master 
+```

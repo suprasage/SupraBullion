@@ -51,7 +51,7 @@ namespace LockApp
             string receiptPath = Path.Combine("./receipts/", $"block_{blockId}.json");
             if (!File.Exists(receiptPath))
             {
-                Console.WriteLine($"Receipt for block {blockId} not found.");
+                PrettyPrint.PrintError($"Receipt for block {blockId} not found.");
                 return;
             }
 
@@ -61,11 +61,11 @@ namespace LockApp
                 var formData = JsonConvert.DeserializeObject<JObject>(schema) ?? new JObject();
                 receiptJson["formData"] = formData; // Append schema as formData
                 File.WriteAllText(receiptPath, JsonConvert.SerializeObject(receiptJson, Formatting.Indented));
-                Console.WriteLine($"Schema added to receipt for block {blockId}.");
+                PrettyPrint.PrintSuccess($"Schema added to receipt for block {blockId}.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error adding schema to receipt: {ex.Message}");
+                PrettyPrint.PrintError($"Error adding schema to receipt: {ex.Message}");
             }
         }
 
@@ -79,7 +79,7 @@ namespace LockApp
             // Optionally save to file
             string lockFile = Path.Combine(LocksPath, $"lock_{newLock.BlockId}.json");
             File.WriteAllText(lockFile, JsonConvert.SerializeObject(newLock, Formatting.Indented));
-            Console.WriteLine($"Lock schema updated for lock {newLock.BlockId}.");
+            PrettyPrint.PrintSuccess($"Lock schema updated for lock {newLock.BlockId}.");
         }
 
         // Method to enforce constraints during Transfer or Sell
@@ -89,7 +89,7 @@ namespace LockApp
             var lockEntry = LockChain.FirstOrDefault(l => l.BlockId == blockId);
             if (lockEntry == null)
             {
-                Console.WriteLine($"No lock found for block {blockId}. Proceeding without constraints.");
+                PrettyPrint.PrintInfo($"No lock found for block {blockId}. Proceeding without constraints.");
                 return;
             }
 
@@ -125,13 +125,13 @@ namespace LockApp
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error checking receipt {file}: {ex.Message}");
+                    PrettyPrint.PrintError($"Error checking receipt {file}: {ex.Message}");
                 }
             }
 
             if (matchingReceipts.Count == 0)
             {
-                Console.WriteLine($"Constraints not fulfilled for block {blockId}. Required schema: {lockEntry.Schema}. Transaction pending.");
+                PrettyPrint.PrintError($"Constraints not fulfilled for block {blockId}. Required schema: {lockEntry.Schema}. Transaction pending.");
                 // Do not proceed; log errors
                 return;
             }
@@ -140,11 +140,11 @@ namespace LockApp
             foreach (var receiptId in matchingReceipts)
             {
                 // Assuming we add to LockChain or a sublist; for simplicity, log
-                Console.WriteLine($"Matching receipt ID {receiptId} stored for constraints.");
+                PrettyPrint.PrintInfo($"Matching receipt ID {receiptId} stored for constraints.");
             }
 
             // Once constraints are met, proceed (this would be called after checks)
-            Console.WriteLine($"Constraints fulfilled for block {blockId}. Proceeding with transaction.");
+            PrettyPrint.PrintSuccess($"Constraints fulfilled for block {blockId}. Proceeding with transaction.");
             // In a real implementation, send receipts to origination and recipient here
         }
 
@@ -165,7 +165,7 @@ namespace LockApp
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading lock from {file}: {ex.Message}");
+                    PrettyPrint.PrintError($"Error loading lock from {file}: {ex.Message}");
                 }
             }
         }
@@ -174,7 +174,7 @@ namespace LockApp
         public void SchemaParser(Lock locked)
         {
             // Parse the schema JSON; for now, just log
-            Console.WriteLine($"Parsing schema for lock {locked.BlockId}: {locked.Schema}");
+            PrettyPrint.PrintInfo($"Parsing schema for lock {locked.BlockId}: {locked.Schema}");
             // Could validate or manipulate the JObject here
         }
     }

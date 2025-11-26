@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using ServerApp;
 
 namespace DataBaseApp
 {
@@ -153,7 +154,7 @@ namespace DataBaseApp
 	            }
 	        } else 
 	        {
-           		Console.WriteLine("Error: schema variable null.");
+           		PrettyPrint.PrintError("Error: schema variable null.");
            	}
            string fileName = $"record_{Guid.NewGuid()}.json";
            File.WriteAllText(Path.Combine(tablePath, fileName), JsonConvert.SerializeObject(obj, Formatting.Indented));
