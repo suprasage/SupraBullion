@@ -10,6 +10,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using DataBaseApp;
+using LockApp;
 
 namespace ServerApp
 {
@@ -693,6 +695,8 @@ namespace ServerApp
         private const string domain = "http://localhost:5000";
         private static Blockchain blockchain = new Blockchain();
         private static PeerNetwork? peerNetwork;
+        private static Database database = new Database(new Query("", QueryType.SELECT)); // Default instance
+        private static Constraint constraint = new Constraint();
 
         static async Task Main(string[] args)
         {
@@ -735,8 +739,9 @@ namespace ServerApp
             switch (action)
             {
                 case "buy":
-                    if (args.Length < 3 || args[1] == null || args[2] == null) { Console.WriteLine("Usage: buy <buyer> <amount>"); return; }
-                    await BuyFromReserve(args[1], decimal.Parse(args[2]));
+                    if (args.Length < 3 || args[1] == null || args[2] == null) { Console.WriteLine("Usage: buy <buyer> <amount> [schema]"); return; }
+                    string schema = args.Length >= 4 ? args[3] : null;
+                    await BuyFromReserve(args[1], decimal.Parse(args[2]), schema);
                     break;
                 case "sell":
                     if (args.Length < 3 || args[1] == null || args[2] == null) { Console.WriteLine("Usage: sell <seller> <amount>"); return; }
@@ -761,12 +766,25 @@ namespace ServerApp
                     RegisterUser(args[1], args[2], args[3], args[4], args[5]);
                     break;
                 case "addlock":
-                    if (args.Length < 2) { Console.WriteLine("Usage: addlock <blockid>"); return; }
-                    blockchain.AddLock(int.Parse(args[1]));
+                    if (args.Length < 2) { Console.WriteLine("Usage: addlock <blockid> or addlock \"<schema>\""); return; }
+                    if (args[1].StartsWith("\"") && args[1].EndsWith("\""))
+                    {
+                        string schemaStr = args[1].Trim('"');
+                        constraint.AddSchemaToReceipt(int.Parse(args.Length >= 3 ? args[2] : "0"), schemaStr); // Assume blockId if provided
+                    }
+                    else
+                    {
+                        blockchain.AddLock(int.Parse(args[1]));
+                    }
                     if (peerNetwork != null)
                     {
                         await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}");
                     }
+                    break;
+                case "updatelock":
+                    if (args.Length < 2 || !args[1].StartsWith("\"") || !args[1].EndsWith("\"")) { Console.WriteLine("Usage: updatelock \"<schema>\""); return; }
+                    string updateSchema = args[1].Trim('"');
+                    constraint.UpdateLockSchema(updateSchema);
                     break;
                 case "removelock":
                     if (args.Length < 2) { Console.WriteLine("Usage: removelock <blockid>"); return; }
@@ -777,8 +795,18 @@ namespace ServerApp
                     }
                     break;
                 case "query":
-                    if (args.Length < 2) { Console.WriteLine("Usage: query <blockid>"); return; }
-                    blockchain.QueryBlock(int.Parse(args[1]));
+                    if (args.Length < 2) { Console.WriteLine("Usage: query <blockid> or query \"<sql_query>\""); return; }
+                    if (args[1].StartsWith("\"") && args[1].EndsWith("\""))
+                    {
+                        string queryStr = args[1].Trim('"');
+                        database.UserQuery = new Query(queryStr, QueryType.SELECT); // Assume SELECT for simplicity; parse inside
+                        string result = database.StringParser(database.UserQuery);
+                        Console.WriteLine(result);
+                    }
+                    else
+                    {
+                        blockchain.QueryBlock(int.Parse(args[1]));
+                    }
                     break;
                 default:
                     Console.WriteLine("Unknown action. Type 'help' for commands.");
@@ -787,7 +815,7 @@ namespace ServerApp
         }
 
         // Updated functions to handle lock conditions
-        public static async Task BuyFromReserve(string buyer, decimal amount)
+        public static async Task BuyFromReserve(string buyer, decimal amount, string schema = null)
         {
             try
             {
@@ -803,6 +831,11 @@ namespace ServerApp
                     blockchain.AddTransaction(tx);
                     blockchain.MinePendingTransactions($"PeerRef:{peerNetwork}");
                     var newBlock = blockchain.Chain.Last();
+                    // Add schema to receipt if provided
+                    if (!string.IsNullOrEmpty(schema))
+                    {
+                        constraint.AddSchemaToReceipt(newBlock.BlockId, schema);
+                    }
                     if (newBlock.Lock)
                     {
                         if (peerNetwork != null)
@@ -838,6 +871,16 @@ namespace ServerApp
             blockchain.AddTransaction(tx);
             blockchain.MinePendingTransactions($"PeerRef:{peerNetwork}");
             var newBlock = blockchain.Chain.Last();
+            var lockedBlocks = blockchain.Chain.Where(b => b.Lock).ToList();
+            foreach (var lockedBlock in lockedBlocks)
+            {
+                string origination = blockchain.GetOriginationForLockedBlock(lockedBlock.BlockId) ?? "";
+                if (!string.IsNullOrEmpty(origination))
+                {
+                    constraint.EnforceConstraints(lockedBlock.BlockId, seller, Blockchain.ReserveAccount, amount);
+                }
+            }
+
             if (newBlock.Lock)
             {
                 if (peerNetwork != null)
@@ -859,6 +902,16 @@ namespace ServerApp
 
         public static void PeerToPeerTransfer(string sender, string receiver, decimal amount)
         {
+            // Check for locks and schemas
+            var lockedBlocks = blockchain.Chain.Where(b => b.Lock).ToList();
+            foreach (var lockedBlock in lockedBlocks)
+            {
+                string origination = blockchain.GetOriginationForLockedBlock(lockedBlock.BlockId) ?? "";
+                if (!string.IsNullOrEmpty(origination))
+                {
+                    constraint.EnforceConstraints(lockedBlock.BlockId, sender, receiver, amount);
+                }
+            }
             var tx = new Transaction(sender, receiver, amount);
             blockchain.AddTransaction(tx);
             Console.WriteLine($"P2P Transfer: {sender} sent {amount} USD to {receiver}. Transaction added.");

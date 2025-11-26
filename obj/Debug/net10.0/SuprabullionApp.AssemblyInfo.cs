@@ -13,11 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SuprabullionApp")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-<<<<<<< HEAD
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+920999fbcf8d78e71fdb70fdc1a9ee93d7f5f2e6")]
-=======
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
->>>>>>> df785bdbcbf60602559fbb36c4a9d39db6d636fb
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e909cc24759c15a85f7a9bc4573b3fca8172f4b8")]
 [assembly: System.Reflection.AssemblyProductAttribute("SuprabullionApp")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SuprabullionApp")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
