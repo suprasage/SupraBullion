@@ -144,14 +144,20 @@ namespace DataBaseApp
             var obj = new JObject();
             var schema = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(Path.Combine(tablePath, "schema.json")));
             int i = 0;
-            foreach (var prop in schema.Properties())
-            {
-                if (i < values.Length) obj[prop.Name] = values[i].Trim();
-                i++;
-            }
-            string fileName = $"record_{Guid.NewGuid()}.json";
-            File.WriteAllText(Path.Combine(tablePath, fileName), JsonConvert.SerializeObject(obj, Formatting.Indented));
-            return JsonConvert.SerializeObject(new { status = "success", message = "Inserted" });
+            if (schema != null)
+			{
+	            foreach (var prop in schema.Properties())
+	            {
+	                if (i < values.Length) obj[prop.Name] = values[i].Trim();
+	                i++;
+	            }
+	        } else 
+	        {
+           		Console.WriteLine("Error: schema variable null.");
+           	}
+           string fileName = $"record_{Guid.NewGuid()}.json";
+           File.WriteAllText(Path.Combine(tablePath, fileName), JsonConvert.SerializeObject(obj, Formatting.Indented));
+           return JsonConvert.SerializeObject(new { status = "success", message = "Inserted" });
         }
 
         public string DbUpdateExec(string tableName, string setClause, string whereClause)
