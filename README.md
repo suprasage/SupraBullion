@@ -289,5 +289,3 @@ With all updates applied:
    - `> buy Alice 50.00 "{\"constraint\": \"met\"}"` – Buys with schema, checks constraints.
 3. **Verify Output**: Logs should be colored and timestamped (e.g., green for success, red for errors).
 4. **Edge Cases**: Test invalid schemas, missing files, or network operations.
-
-If everything works, your blockchain app now supports advanced database operations with schema validation and pretty logging! If you encounter issues or need further tweaks, share the error logs or code snippets.
