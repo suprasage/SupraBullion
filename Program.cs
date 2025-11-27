@@ -208,21 +208,86 @@ namespace ServerApp
             Chain.Add(new Block(0, new List<Transaction>(), "0", blockId: 0));
         }
 
+        public async Task MinePendingTransactions(PeerNetwork? peerNetwork = null, string peerReference = "")
+        {
+            if (PendingTransactions.Count == 0)
+            {
+                PrettyPrint.PrintInfo("No pending transactions to mine.");
+                return;
+            }
+
+            // Check for duplicates in pending transactions
+            var validTransactions = PendingTransactions.Where(tx => !IsTransactionDuplicate(tx)).ToList();
+            if (validTransactions.Count != PendingTransactions.Count)
+            {
+                PrettyPrint.PrintWarning("Some transactions were duplicates and skipped.");
+                PendingTransactions = validTransactions;
+            }
+
+            if (PendingTransactions.Count == 0)
+            {
+                PrettyPrint.PrintInfo("No valid pending transactions to mine.");
+                return;
+            }
+
+            int blockId = nextBlockId++;
+            Block proposedBlock = new Block(Chain.Count, PendingTransactions, Chain[Chain.Count - 1].Hash, peerReference, blockId);
+            proposedBlock.MineBlock(Difficulty);
+
+            // Propose the block and seek consensus
+            bool consensusReached = await ProposeBlockAsync(proposedBlock, peerNetwork);
+            if (consensusReached)
+            {
+                Chain.Add(proposedBlock);
+                PendingTransactions = new List<Transaction>();
+                WriteReceipt(proposedBlock);
+                WriteBlock(proposedBlock);
+                PrettyPrint.PrintSuccess($"Block {proposedBlock.Index} mined and finalized with consensus.");
+                // Notify peers of the finalized chain
+                if (peerNetwork != null)
+                {
+                    await peerNetwork.NotifyPeersAsync($"FINALIZED:{JsonConvert.SerializeObject(Chain)}");
+                }
+            }
+            else
+            {
+                PrettyPrint.PrintError($"Block {proposedBlock.Index} proposal failed consensus. Discarded.");
+            }
+        }
+
+        private async Task<bool> ProposeBlockAsync(Block proposedBlock, PeerNetwork? peerNetwork)
+        {
+            if (peerNetwork == null) return true; // Local acceptance if no peers
+
+            int agreements = await peerNetwork.SendProposalAndCollectAgreementsAsync(proposedBlock);
+            return agreements >= 3 || peerNetwork.GetPeerCount() < 3; // Require 3+ agreements or default to local if <3 peers
+        }
+
         public void AddTransaction(Transaction transaction)
         {
+            if (IsTransactionDuplicate(transaction))
+            {
+                PrettyPrint.PrintWarning("Duplicate transaction detected. Skipping.");
+                return;
+            }
             PendingTransactions.Add(transaction);
         }
 
-        public void MinePendingTransactions(string peerReference = "")
+        public bool IsTransactionDuplicate(Transaction transaction)
         {
-            int blockId = nextBlockId++;
-            Block newBlock = new Block(Chain.Count, PendingTransactions, Chain[Chain.Count - 1].Hash, peerReference, blockId);
-            newBlock.MineBlock(Difficulty);
-            Chain.Add(newBlock);
-            PendingTransactions = new List<Transaction>();
-            WriteReceipt(newBlock);
-            WriteBlock(newBlock); // New: Write block to BlocksPath
+            foreach (var block in Chain)
+            {
+                if (block.Transactions.Any(tx => tx.Sender == transaction.Sender &&
+                                                  tx.Receiver == transaction.Receiver &&
+                                                  tx.Amount == transaction.Amount &&
+                                                  tx.PayPalOrderId == transaction.PayPalOrderId))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
+
 
         private void WriteReceipt(Block block)
         {
@@ -518,6 +583,84 @@ namespace ServerApp
             listener = new TcpListener(IPAddress.Any, config.Port);
         }
 
+        public async Task<int> SendProposalAndCollectAgreementsAsync(Block proposedBlock)
+        {
+            int agreements = 0;
+            var tasks = new List<Task>();
+
+            foreach (var peer in knownPeers)
+            {
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var parts = peer.Split(':');
+                        using (TcpClient client = new TcpClient())
+                        {
+                            await client.ConnectAsync(parts[0], int.Parse(parts[1]));
+                            using (NetworkStream stream = client.GetStream())
+                            using (StreamWriter writer = new StreamWriter(stream) { AutoFlush = true })
+                            using (StreamReader reader = new StreamReader(stream))
+                            {
+                                string proposalMessage = $"PROPOSAL:{JsonConvert.SerializeObject(proposedBlock)}";
+                                await writer.WriteLineAsync(proposalMessage);
+
+                                // Wait for response with timeout
+                                var cts = new CancellationTokenSource(10000); // 10 second timeout
+                                string? response = await reader.ReadLineAsync();
+                                if (response != null && response.StartsWith("AGREE:") && response.Contains(proposedBlock.Hash))
+                                {
+                                    Interlocked.Increment(ref agreements);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        PrettyPrint.PrintError($"Failed to get agreement from peer {peer}: {ex.Message}");
+                    }
+                }));
+            }
+
+            await Task.WhenAll(tasks);
+            return agreements;
+        }
+
+        public int GetPeerCount()
+        {
+            return knownPeers.Count;
+        }
+
+        private bool ValidateProposedBlock(Block proposedBlock)
+        {
+            // Check hash
+            if (proposedBlock.Hash != proposedBlock.CalculateHash()) return false;
+
+            // Check previous hash
+            if (blockchain.Chain.Count > 0 && proposedBlock.PreviousHash != blockchain.Chain.Last().Hash) return false;
+
+            // Check for duplicate transactions in the proposed block and chain
+            foreach (var tx in proposedBlock.Transactions)
+            {
+                if (blockchain.IsTransactionDuplicate(tx)) return false;
+            }
+
+            return true;
+        }
+
+        private bool IsValidChain(List<Block> chain)
+        {
+            for (int i = 1; i < chain.Count; i++)
+            {
+                if (chain[i].Hash != chain[i].CalculateHash() || chain[i].PreviousHash != chain[i - 1].Hash)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+
         public void AddPeer(string peerAddress)
         {
             if (!knownPeers.Contains(peerAddress))
@@ -628,19 +771,32 @@ namespace ServerApp
             using (StreamReader reader = new StreamReader(stream))
             using (StreamWriter writer = new StreamWriter(stream) { AutoFlush = true })
             {
-                string? _message = await reader.ReadLineAsync();
-                string message;
-                if (_message != null)
-                {
-                    message = _message;
-                }
-                else
-                {
-                    message = "Empty Response";
-                    Console.WriteLine("ReadLine for client returns Null response.");
-                }
+                string? message = await reader.ReadLineAsync();
                 if (message != null)
                 {
+                    if (message.StartsWith("PROPOSAL:"))
+                    {
+                        string blockData = message.Substring(9);
+                        var proposedBlock = JsonConvert.DeserializeObject<Block>(blockData);
+                        if (proposedBlock != null && ValidateProposedBlock(proposedBlock))
+                        {
+                            await writer.WriteLineAsync($"AGREE:{proposedBlock.Hash}");
+                        }
+                        else
+                        {
+                            await writer.WriteLineAsync("DISAGREE");
+                        }
+                    }
+                    else if (message.StartsWith("FINALIZED:"))
+                    {
+                        string chainData = message.Substring(10);
+                        var receivedChain = JsonConvert.DeserializeObject<List<Block>>(chainData);
+                        if (receivedChain != null && IsValidChain(receivedChain) && receivedChain.Count > blockchain.Chain.Count)
+                        {
+                            blockchain.Chain = receivedChain;
+                            PrettyPrint.PrintSuccess("Blockchain updated from finalized proposal.");
+                        }
+                    }
                     if (message.StartsWith("CHAIN:"))
                     {
                         string chainData = message.Substring(6);
@@ -835,11 +991,7 @@ namespace ServerApp
                     PeerToPeerTransfer(args[1], args[2], decimal.Parse(args[3]));
                     break;
                 case "mine":
-                    blockchain.MinePendingTransactions();
-                    if (peerNetwork != null)
-                    {
-                        await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}");
-                    }
+                    await blockchain.MinePendingTransactions();
                     break;
                 case "validate":
                     PrettyPrint.PrintInfo($"Blockchain valid: {blockchain.IsChainValid()}");
@@ -941,7 +1093,7 @@ namespace ServerApp
                 {
                     var tx = new Transaction(Blockchain.ReserveAccount, buyer, amount) { PayPalOrderId = paypalId };
                     blockchain.AddTransaction(tx);
-                    blockchain.MinePendingTransactions($"PeerRef:{peerNetwork}");
+                    await blockchain.MinePendingTransactions(peerNetwork, $"PeerRef:{peerNetwork}");
                     var newBlock = blockchain.Chain.Last();
                     // Add schema to receipt if provided
                     if (!string.IsNullOrEmpty(schema))
@@ -985,7 +1137,7 @@ namespace ServerApp
         {
             var tx = new Transaction(seller, Blockchain.ReserveAccount, amount);
             blockchain.AddTransaction(tx);
-            blockchain.MinePendingTransactions($"PeerRef:{peerNetwork}");
+            await blockchain.MinePendingTransactions(peerNetwork, $"PeerRef:{peerNetwork}");
             var newBlock = blockchain.Chain.Last();
             var lockedBlocks = blockchain.Chain.Where(b => b.Lock).ToList();
             foreach (var lockedBlock in lockedBlocks)
