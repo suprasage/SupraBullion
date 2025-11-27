@@ -4,11 +4,11 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NJsonSchema; // New library for schema validation
 using ServerApp;
 
 namespace LockApp
 {
-    // Class meant for JSON schema storage and manipulation
     public class Lock
     {
         public DateTime Timestamp { get; set; }
@@ -24,7 +24,6 @@ namespace LockApp
             Json = JsonConvert.DeserializeObject<JObject>(schema) ?? new JObject();
         }
 
-        // Default constructor (as per original)
         public Lock()
         {
             Timestamp = DateTime.Now;
@@ -45,7 +44,6 @@ namespace LockApp
             Directory.CreateDirectory(LocksPath);
         }
 
-        // Method to add schema to a receipt's JSON as form data
         public void AddSchemaToReceipt(int blockId, string schema)
         {
             string receiptPath = Path.Combine("./receipts/", $"block_{blockId}.json");
@@ -59,7 +57,7 @@ namespace LockApp
             {
                 var receiptJson = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(receiptPath)) ?? new JObject();
                 var formData = JsonConvert.DeserializeObject<JObject>(schema) ?? new JObject();
-                receiptJson["formData"] = formData; // Append schema as formData
+                receiptJson["formData"] = formData;
                 File.WriteAllText(receiptPath, JsonConvert.SerializeObject(receiptJson, Formatting.Indented));
                 PrettyPrint.PrintSuccess($"Schema added to receipt for block {blockId}.");
             }
@@ -69,31 +67,24 @@ namespace LockApp
             }
         }
 
-        // Method to update lock schema (for updatelock command)
         public void UpdateLockSchema(string schema)
         {
-            // Assume updating the last lock or a specific one; for simplicity, update all or add a new one
-            // Here, we'll add a new lock with the schema
             var newLock = new Lock(nextLockId++, schema);
             LockChain.Add(newLock);
-            // Optionally save to file
             string lockFile = Path.Combine(LocksPath, $"lock_{newLock.BlockId}.json");
             File.WriteAllText(lockFile, JsonConvert.SerializeObject(newLock, Formatting.Indented));
             PrettyPrint.PrintSuccess($"Lock schema updated for lock {newLock.BlockId}.");
         }
 
-        // Method to enforce constraints during Transfer or Sell
         public void EnforceConstraints(int blockId, string sender, string receiver, decimal amount)
         {
-            // Find the lock for this blockId
             var lockEntry = LockChain.FirstOrDefault(l => l.BlockId == blockId);
             if (lockEntry == null)
             {
-                PrettyPrint.PrintInfo($"No lock found for block {blockId}. Proceeding without constraints.");
+                PrettyPrint.PrintError($"No lock found for block {blockId}. Proceeding without constraints.");
                 return;
             }
 
-            // Check receipts directory for matching receipts
             string receiptsPath = "./receipts/";
             var receiptFiles = Directory.GetFiles(receiptsPath, "*.json");
             var matchingReceipts = new List<int>();
@@ -103,10 +94,9 @@ namespace LockApp
                 try
                 {
                     var receiptJson = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(file)) ?? new JObject();
-                    var block = receiptJson.ToObject<Block>(); // Assuming Block class is accessible or deserialize manually
+                    var block = receiptJson.ToObject<Block>(); // Assuming Block class is accessible; adjust if needed
                     if (block != null && block.BlockId == blockId && receiptJson["formData"] != null)
                     {
-                        // Check if formData matches the schema (basic check: if all schema keys are present)
                         var formData = receiptJson["formData"] as JObject;
                         bool matches = true;
                         foreach (var prop in lockEntry.Json.Properties())
@@ -119,7 +109,7 @@ namespace LockApp
                         }
                         if (matches)
                         {
-                            matchingReceipts.Add(blockId); // Store the blockId as receipt ID
+                            matchingReceipts.Add(blockId);
                         }
                     }
                 }
@@ -132,26 +122,19 @@ namespace LockApp
             if (matchingReceipts.Count == 0)
             {
                 PrettyPrint.PrintError($"Constraints not fulfilled for block {blockId}. Required schema: {lockEntry.Schema}. Transaction pending.");
-                // Do not proceed; log errors
                 return;
             }
 
-            // Store matching receipts in LockChain temporarily
             foreach (var receiptId in matchingReceipts)
             {
-                // Assuming we add to LockChain or a sublist; for simplicity, log
-                PrettyPrint.PrintInfo($"Matching receipt ID {receiptId} stored for constraints.");
+                PrettyPrint.PrintSuccess($"Matching receipt ID {receiptId} stored for constraints.");
             }
 
-            // Once constraints are met, proceed (this would be called after checks)
             PrettyPrint.PrintSuccess($"Constraints fulfilled for block {blockId}. Proceeding with transaction.");
-            // In a real implementation, send receipts to origination and recipient here
         }
 
-        // Placeholder for LockChain method (as per original, but renamed to avoid conflict)
         public void InitializeLockChain()
         {
-            // Load existing locks from files
             var lockFiles = Directory.GetFiles(LocksPath, "*.json");
             foreach (var file in lockFiles)
             {
@@ -170,10 +153,37 @@ namespace LockApp
             }
         }
 
-        // Placeholder for SchemaParser (as per original)
+        public bool ValidateAgainstSchema(string tableName, JObject data)
+        {
+            string schemaPath = Path.Combine("./database", tableName, "schema.json");
+            if (!File.Exists(schemaPath))
+            {
+                PrettyPrint.PrintWarning($"Warning: No schema found for table {tableName}. Skipping validation.");
+                return true; // Skip if no schema
+            }
+
+            try
+            {
+                var schemaJson = File.ReadAllText(schemaPath);
+                var schema = JsonSchema.FromJsonAsync(schemaJson).Result; // Async load; use .Result for sync
+                var dataToken = JToken.FromObject(data);
+                var errors = schema.Validate(dataToken);
+                if (errors.Any())
+                {
+                    PrettyPrint.PrintError($"Schema validation errors for {tableName}: {string.Join(", ", errors.Select(e => e.ToString()))}");
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                PrettyPrint.PrintError($"Error validating schema for {tableName}: {ex.Message}");
+                return false;
+            }
+        }
+
         public void SchemaParser(Lock locked)
         {
-            // Parse the schema JSON; for now, just log
             PrettyPrint.PrintInfo($"Parsing schema for lock {locked.BlockId}: {locked.Schema}");
             // Could validate or manipulate the JObject here
         }

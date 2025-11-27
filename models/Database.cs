@@ -4,7 +4,8 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using ServerApp;
+using NJsonSchema; // Updated to use NJsonSchema instead of the obsolete Newtonsoft.Json.Schema
+using LockApp;
 
 namespace DataBaseApp
 {
@@ -26,6 +27,7 @@ namespace DataBaseApp
     {
         public Query UserQuery { get; set; }
         public string DatabasePath { get; set; } = "./database";
+        private Constraint constraint = new Constraint();
 
         public Database(Query qry)
         {
@@ -35,7 +37,7 @@ namespace DataBaseApp
 
         public string StringParser(Query qry)
         {
-            string[] tokens = qry.QueryText.Split(new[] { ' ', ',', '(', ')', '=', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] tokens = qry.QueryText.Split(new[] { ' ', ',', '(', ')', '=', ';', '\t' }, StringSplitOptions.RemoveEmptyEntries);
             if (tokens.Length == 0) return JsonConvert.SerializeObject(new { status = "error", message = "Invalid query" });
 
             string command = tokens[0].ToUpper();
@@ -65,20 +67,69 @@ namespace DataBaseApp
         {
             if (tokens.Length < 4 || tokens[1].ToUpper() != "TABLE") return JsonConvert.SerializeObject(new { status = "error", message = "Invalid CREATE syntax" });
             string tableName = tokens[2];
-            string schemaStr = string.Join(" ", tokens.Skip(3));
-            // Create subdirectory and schema.json
+            string columnsStr = string.Join(" ", tokens.Skip(3)).Trim('(', ')');
+            string[] columns = columnsStr.Split(',');
+
+            var schema = new JObject
+            {
+                ["type"] = "array",
+                ["$schema"] = "http://json-schema.org/draft-04/schema#",
+                ["description"] = "",
+                ["minItems"] = 1,
+                ["uniqueItems"] = true,
+                ["items"] = new JObject
+                {
+                    ["type"] = "object",
+                    ["required"] = new JArray(),
+                    ["properties"] = new JObject()
+                }
+            };
+
+            var required = schema["items"]?["required"] as JArray;
+            var properties = schema["items"]?["properties"] as JObject;
+            if (required == null || properties == null)
+            {
+                return JsonConvert.SerializeObject(new { status = "error", message = "Failed to build schema" });
+            }
+
+            foreach (var col in columns)
+            {
+                var parts = col.Trim().Split(' ');
+                if (parts.Length == 2)
+                {
+                    string colName = parts[0];
+                    string colType = parts[1].ToLower();
+                    required.Add(colName);
+
+                    JObject propSchema;
+                    switch (colType)
+                    {
+                        case "int":
+                            propSchema = new JObject { ["type"] = "integer", ["minLength"] = 1 };
+                            break;
+                        case "varchar":
+                            propSchema = new JObject { ["type"] = "string", ["minLength"] = 1 };
+                            break;
+                        case "array":
+                            propSchema = new JObject
+                            {
+                                ["type"] = "array",
+                                ["items"] = new JObject { ["required"] = new JArray(), ["properties"] = new JObject() }
+                            };
+                            break;
+                        default:
+                            propSchema = new JObject { ["type"] = "string" };
+                            break;
+                    }
+                    properties[colName] = propSchema;
+                }
+            }
+
             string tablePath = Path.Combine(DatabasePath, tableName);
             Directory.CreateDirectory(tablePath);
-            var schema = new JObject();
-            // Basic parsing: assume key-value pairs
-            var pairs = schemaStr.Split(',');
-            foreach (var pair in pairs)
-            {
-                var kv = pair.Trim().Split(' ');
-                if (kv.Length == 2) schema[kv[0]] = kv[1];
-            }
             File.WriteAllText(Path.Combine(tablePath, "schema.json"), JsonConvert.SerializeObject(schema, Formatting.Indented));
-            return JsonConvert.SerializeObject(new { status = "success", message = $"Table {tableName} created" });
+
+            return JsonConvert.SerializeObject(new { status = "success", message = $"Table {tableName} created with schema" });
         }
 
         public string DbSelectParse(string[] tokens)
@@ -91,7 +142,6 @@ namespace DataBaseApp
 
         public string DbInsertParse(string[] tokens)
         {
-            // Simplified: INSERT INTO table VALUES (val1, val2)
             if (tokens.Length < 5 || tokens[1].ToUpper() != "INTO" || tokens[3].ToUpper() != "VALUES") return JsonConvert.SerializeObject(new { status = "error", message = "Invalid INSERT syntax" });
             string tableName = tokens[2];
             string valuesStr = string.Join(" ", tokens.Skip(4)).Trim('(', ')');
@@ -100,7 +150,6 @@ namespace DataBaseApp
 
         public string DbUpdateParse(string[] tokens)
         {
-            // Simplified: UPDATE table SET col=val WHERE condition
             if (tokens.Length < 6 || tokens[2].ToUpper() != "SET") return JsonConvert.SerializeObject(new { status = "error", message = "Invalid UPDATE syntax" });
             string tableName = tokens[1];
             string setClause = string.Join(" ", tokens.Skip(3).TakeWhile(t => t.ToUpper() != "WHERE"));
@@ -110,7 +159,6 @@ namespace DataBaseApp
 
         public string DbDeleteParse(string[] tokens)
         {
-            // Simplified: DELETE FROM table WHERE condition
             if (tokens.Length < 4 || tokens[1].ToUpper() != "FROM") return JsonConvert.SerializeObject(new { status = "error", message = "Invalid DELETE syntax" });
             string tableName = tokens[2];
             string whereClause = string.Join(" ", tokens.Skip(3));
@@ -143,22 +191,47 @@ namespace DataBaseApp
 
             var values = valuesStr.Split(',');
             var obj = new JObject();
-            var schema = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(Path.Combine(tablePath, "schema.json")));
-            int i = 0;
-            if (schema != null)
-			{
-	            foreach (var prop in schema.Properties())
-	            {
-	                if (i < values.Length) obj[prop.Name] = values[i].Trim();
-	                i++;
-	            }
-	        } else 
-	        {
-           		PrettyPrint.PrintError("Error: schema variable null.");
-           	}
-           string fileName = $"record_{Guid.NewGuid()}.json";
-           File.WriteAllText(Path.Combine(tablePath, fileName), JsonConvert.SerializeObject(obj, Formatting.Indented));
-           return JsonConvert.SerializeObject(new { status = "success", message = "Inserted" });
+            string schemaPath = Path.Combine(tablePath, "schema.json");
+            if (File.Exists(schemaPath))
+            {
+                var schemaJson = JObject.Parse(File.ReadAllText(schemaPath));
+                var properties = schemaJson["items"]?["properties"] as JObject;
+                if (properties == null)
+                {
+                    return JsonConvert.SerializeObject(new { status = "error", message = "Invalid schema" });
+                }
+                int i = 0;
+                foreach (var prop in properties.Properties())
+                {
+                    if (i < values.Length)
+                    {
+                        string val = values[i].Trim().Trim('"');
+                        var propType = prop.Value["type"]?.ToString();
+                        if (propType == "integer")
+                        {
+                            obj[prop.Name] = int.Parse(val);
+                        }
+                        else if (propType == "array")
+                        {
+                            obj[prop.Name] = JArray.Parse(val);
+                        }
+                        else
+                        {
+                            obj[prop.Name] = val;
+                        }
+                    }
+                    i++;
+                }
+
+                if (!constraint.ValidateAgainstSchema(tableName, obj))
+                {
+                    return JsonConvert.SerializeObject(new { status = "error", message = "Validation failed against schema" });
+                }
+            }
+
+            string fileName = $"record_{Guid.NewGuid()}.json";
+            File.WriteAllText(Path.Combine(tablePath, fileName), JsonConvert.SerializeObject(obj, Formatting.Indented));
+            return JsonConvert.SerializeObject(new { status = "success", message = "Inserted" });
         }
 
         public string DbUpdateExec(string tableName, string setClause, string whereClause)
@@ -173,13 +246,35 @@ namespace DataBaseApp
                 var obj = JsonConvert.DeserializeObject<JObject>(json);
                 if (obj != null && MatchesWhere(obj, whereClause))
                 {
-                    // Apply SET
                     var sets = setClause.Split(',');
                     foreach (var set in sets)
                     {
                         var kv = set.Trim().Split('=');
-                        if (kv.Length == 2) obj[kv[0].Trim()] = kv[1].Trim().Trim('"');
+                        if (kv.Length == 2)
+                        {
+                            string key = kv[0].Trim();
+                            string val = kv[1].Trim().Trim('"');
+                            var currentValue = obj[key];
+                            if (currentValue != null && currentValue.Type == JTokenType.Integer)
+                            {
+                                obj[key] = int.Parse(val);
+                            }
+                            else if (currentValue != null && currentValue.Type == JTokenType.Array)
+                            {
+                                obj[key] = JArray.Parse(val);
+                            }
+                            else
+                            {
+                                obj[key] = val;
+                            }
+                        }
                     }
+
+                    if (!constraint.ValidateAgainstSchema(tableName, obj))
+                    {
+                        return JsonConvert.SerializeObject(new { status = "error", message = "Validation failed against schema" });
+                    }
+
                     File.WriteAllText(file, JsonConvert.SerializeObject(obj, Formatting.Indented));
                 }
             }
