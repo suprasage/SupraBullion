@@ -185,6 +185,34 @@ namespace ServerApp
         }
     }
 
+    public static class MiningFee
+    {
+        private const decimal FeeRate = 0.0001m; // 0.01%
+
+        public static decimal CalculateFee(decimal amount)
+        {
+            return amount > 0 ? amount * FeeRate : 0;
+        }
+
+        public static void ApplyFee(List<Transaction> pendingTransactions, string sender, string receiver, decimal amount, string minerId)
+        {
+            decimal fee = CalculateFee(amount);
+            if (fee > 0)
+            {
+                decimal adjustedAmount = amount - fee;
+                // Add adjusted transaction
+                pendingTransactions.Add(new Transaction(sender, receiver, adjustedAmount));
+                // Add fee transaction to miner
+                pendingTransactions.Add(new Transaction(sender, minerId, fee));
+                PrettyPrint.PrintInfo($"Fee of {fee:F2} applied. Adjusted amount: {adjustedAmount:F2}. Fee sent to miner: {minerId}");
+            }
+            else
+            {
+                pendingTransactions.Add(new Transaction(sender, receiver, amount));
+            }
+        }
+    }
+
     // Simple Blockchain class
     public class Blockchain
     {
@@ -208,7 +236,7 @@ namespace ServerApp
             Chain.Add(new Block(0, new List<Transaction>(), "0", blockId: 0));
         }
 
-        public async Task MinePendingTransactions(PeerNetwork? peerNetwork = null, string peerReference = "")
+        public async Task MinePendingTransactions(PeerNetwork? peerNetwork = null, string peerReference = "", string minerId = "")
         {
             if (PendingTransactions.Count == 0)
             {
@@ -242,7 +270,7 @@ namespace ServerApp
                 PendingTransactions = new List<Transaction>();
                 WriteReceipt(proposedBlock);
                 WriteBlock(proposedBlock);
-                PrettyPrint.PrintSuccess($"Block {proposedBlock.Index} mined and finalized with consensus.");
+                PrettyPrint.PrintSuccess($"Block {proposedBlock.Index} mined and finalized with consensus. Miner reward applied.");
                 // Notify peers of the finalized chain
                 if (peerNetwork != null)
                 {
@@ -254,6 +282,7 @@ namespace ServerApp
                 PrettyPrint.PrintError($"Block {proposedBlock.Index} proposal failed consensus. Discarded.");
             }
         }
+
 
         private async Task<bool> ProposeBlockAsync(Block proposedBlock, PeerNetwork? peerNetwork)
         {
@@ -896,12 +925,10 @@ namespace ServerApp
         private static PeerNetwork? peerNetwork;
         private static Database database = new Database(new Query("", QueryType.SELECT)); // Default instance
         private static Constraint constraint = new Constraint();
+        private static AppConfig config = AppConfig.Load(); // Static config field for global access
 
         static async Task Main(string[] args)
         {
-            // New: Load config
-            var config = AppConfig.Load();
-
             // Initialize peer network with config
             peerNetwork = new PeerNetwork(blockchain, config);
             peerNetwork.AddPeer("127.0.0.1:8081"); // Example peer
@@ -991,7 +1018,7 @@ namespace ServerApp
                     PeerToPeerTransfer(args[1], args[2], decimal.Parse(args[3]));
                     break;
                 case "mine":
-                    await blockchain.MinePendingTransactions();
+                    await blockchain.MinePendingTransactions(peerNetwork, minerId: config.PeerId);
                     break;
                 case "validate":
                     PrettyPrint.PrintInfo($"Blockchain valid: {blockchain.IsChainValid()}");
@@ -1085,15 +1112,14 @@ namespace ServerApp
             {
                 var token = await PayPalAPI.AuthenticateAsync(environment);
                 if (string.IsNullOrEmpty(token)) { PrettyPrint.PrintError("Authentication failed."); return; }
-                // Proceed
                 var (paypalId, url) = await PayPalAPI.CreateOrderAsync(token, amount, "USD", environment, domain + "/payments/paypalOrderComplete", domain);
                 PrettyPrint.PrintInfo($"Redirect user to: {url}");
                 var status = await PayPalAPI.CaptureOrderAsync(token, paypalId, environment);
                 if (status == "COMPLETED")
                 {
-                    var tx = new Transaction(Blockchain.ReserveAccount, buyer, amount) { PayPalOrderId = paypalId };
-                    blockchain.AddTransaction(tx);
-                    await blockchain.MinePendingTransactions(peerNetwork, $"PeerRef:{peerNetwork}");
+                    // Apply fee and add transactions
+                    MiningFee.ApplyFee(blockchain.PendingTransactions, Blockchain.ReserveAccount, buyer, amount, config.PeerId);
+                    await blockchain.MinePendingTransactions(peerNetwork, $"PeerRef:{peerNetwork}", config.PeerId);
                     var newBlock = blockchain.Chain.Last();
                     // Add schema to receipt if provided
                     if (!string.IsNullOrEmpty(schema))
@@ -1104,23 +1130,17 @@ namespace ServerApp
                     {
                         if (peerNetwork != null)
                         {
-                            await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}", newBlock); // Null check
-                        } else 
-                        {
-                            Console.WriteLine("Error: PeerNetwork returns Null Response while adding locked block for reserve.");
+                            await peerNetwork.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}", newBlock);
                         }
                     }
                     else
                     {
                         if (peerNetwork != null)
                         {
-                            await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}"); // Null check
-                        } else 
-                        {
-                            Console.WriteLine("Error: PeerNetwork returns Null Response while adding unlock block for reserve.");
+                            await peerNetwork.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}");
                         }
                     }
-                    PrettyPrint.PrintSuccess($"Buy from Reserve: {buyer} bought {amount} USD. Transaction added.");
+                    PrettyPrint.PrintSuccess($"Buy from Reserve: {buyer} bought {amount} USD. Fee applied and transaction added.");
                 }
                 else
                 {
@@ -1129,15 +1149,15 @@ namespace ServerApp
             }
             catch (Exception ex)
             {
-                PrettyPrint.PrintError($"Error: in BuyFromReserve: {ex.Message}");
+                PrettyPrint.PrintError($"Error in BuyFromReserve: {ex.Message}");
             }
         }
 
         public static async Task SellToReserve(string seller, decimal amount)
         {
-            var tx = new Transaction(seller, Blockchain.ReserveAccount, amount);
-            blockchain.AddTransaction(tx);
-            await blockchain.MinePendingTransactions(peerNetwork, $"PeerRef:{peerNetwork}");
+            // Apply fee and add transactions
+            MiningFee.ApplyFee(blockchain.PendingTransactions, seller, Blockchain.ReserveAccount, amount, config.PeerId);
+            await blockchain.MinePendingTransactions(peerNetwork, $"PeerRef:{peerNetwork}", config.PeerId);
             var newBlock = blockchain.Chain.Last();
             var lockedBlocks = blockchain.Chain.Where(b => b.Lock).ToList();
             foreach (var lockedBlock in lockedBlocks)
@@ -1153,19 +1173,17 @@ namespace ServerApp
             {
                 if (peerNetwork != null)
                 {
-                    await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}", newBlock); // Null check
-                } else 
-                { PrettyPrint.PrintError("Error: PeerNetwork returns Null Response while adding locked block for reserve."); }
+                    await peerNetwork.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}", newBlock);
+                }
             }
             else
             {
                 if (peerNetwork != null)
                 {
-                    await peerNetwork!.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}"); // Null check
-                } else 
-                { PrettyPrint.PrintError("Error: PeerNetwork returns Null Response while adding unlocked block for reserve."); }
+                    await peerNetwork.NotifyPeersAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}");
+                }
             }
-            PrettyPrint.PrintSuccess($"Sell to Reserve: {seller} sold {amount} USD. Transaction added.");
+            PrettyPrint.PrintSuccess($"Sell to Reserve: {seller} sold {amount} USD. Fee applied and transaction added.");
         }
 
         public static void PeerToPeerTransfer(string sender, string receiver, decimal amount)
@@ -1180,9 +1198,9 @@ namespace ServerApp
                     constraint.EnforceConstraints(lockedBlock.BlockId, sender, receiver, amount);
                 }
             }
-            var tx = new Transaction(sender, receiver, amount);
-            blockchain.AddTransaction(tx);
-            PrettyPrint.PrintSuccess($"P2P Transfer: {sender} sent {amount} USD to {receiver}. Transaction added.");
+            // Apply fee and add transactions
+            MiningFee.ApplyFee(blockchain.PendingTransactions, sender, receiver, amount, config.PeerId);
+            PrettyPrint.PrintSuccess($"P2P Transfer: {sender} sent {amount} USD to {receiver}. Fee applied and transaction added.");
         }
 
         public static void RegisterUser(string user, string ip, string peersHash, string privateKey, string publicKey)
