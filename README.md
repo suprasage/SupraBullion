@@ -270,7 +270,6 @@ git add .
 git commit -m "message"
 git push -u origin master 
 ```
-
 ## Key Changes Confirmed in Locks.cs
 - **PrettyPrint Integration**: All logging now uses the `PrettyPrint` class from `ServerApp` (added `using ServerApp;`). This provides:
   - Red timestamps for errors.
@@ -299,4 +298,8 @@ With all updates applied:
    - `> addlock "{\"key\": \"value\"}" 1` – Adds schema to receipt.
    - `> buy Alice 50.00 "{\"constraint\": \"met\"}"` – Buys with schema, checks constraints.
 3. **Verify Output**: Logs should be colored and timestamped (e.g., green for success, red for errors).
+<<<<<<< HEAD
 4. **Edge Cases**: Test invalid schemas, missing files, or network operations.
+=======
+4. **Edge Cases**: Test invalid schemas, missing files, or network operations.
+>>>>>>> 8839a4e6ed78767e4e98108c6580b55c6b577f72
