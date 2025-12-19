@@ -1,0 +1,19 @@
+{
+  "Index": 1,
+  "Timestamp": "2025-12-05T07:32:29.3971177-08:00",
+  "Transactions": [
+    {
+      "Sender": "Reserve",
+      "Receiver": "Bob",
+      "Amount": 50.00,
+      "PayPalOrderId": "6SK311654Y768570E"
+    }
+  ],
+  "PreviousHash": "7333ae0f8d14f28bbfbcc1eb0fd41f1445aa4bcf78c98472b550e2b5734d022f",
+  "Hash": "0071fcb8380acc1facc866cbfc023bdd0e1fa9d1453158b76da5b974769751fb",
+  "Nonce": 130,
+  "PeerReference": "PeerRef:ServerApp.PeerNetwork",
+  "BlockId": 1,
+  "Lock": false,
+  "Origination": ""
+}

@@ -196,6 +196,7 @@ namespace ServerApp
         public string ReceiptsPath { get; set; } = "./receipts/";
         public string BlocksPath { get; set; } = "./blocks/"; // New: Path for block files
         private static int nextBlockId = 1; // Auto-increment block IDs
+        public static Database database = new Database(new Query("", QueryType.SELECT)); // Made public
 
         public Blockchain()
         {
@@ -243,6 +244,10 @@ namespace ServerApp
                 WriteReceipt(proposedBlock);
                 WriteBlock(proposedBlock);
                 PrettyPrint.PrintSuccess($"Block {proposedBlock.Index} mined and finalized with consensus.");
+
+                // Updated: Handle cloister fee distribution if applicable
+                await HandleCloisterFeesAsync(proposedBlock, peerNetwork, peerReference);
+
                 // Notify peers of the finalized chain
                 if (peerNetwork != null)
                 {
@@ -253,6 +258,65 @@ namespace ServerApp
             {
                 PrettyPrint.PrintError($"Block {proposedBlock.Index} proposal failed consensus. Discarded.");
             }
+        }
+
+        // Updated: Handle cloister fees and distribution
+        private async Task HandleCloisterFeesAsync(Block block, PeerNetwork? peerNetwork, string peerReference)
+        {
+            var config = AppConfig.Load();
+            if (!config.Cloistering || string.IsNullOrEmpty(config.CloisterName) || peerReference != config.CloisterName)
+            {
+                return;
+            }
+
+            // Get cloister settings from database
+            string selectCloister = $"SELECT * FROM cloister_data WHERE name = \"{peerReference}\"";
+            database.UserQuery = new Query(selectCloister, QueryType.SELECT);
+            var result = database.StringParser(database.UserQuery);
+            var data = JsonConvert.DeserializeObject<JObject>(result);
+            if (data?["status"]?.ToString() != "success" || !(data["data"]?.Any() ?? false))
+            {
+                PrettyPrint.PrintWarning("Cloister settings not found. Skipping fee distribution.");
+                return;
+            }
+
+            var cloisterData = data["data"]?[0];
+            if (cloisterData == null) return;
+            decimal portionPercent = cloisterData["portion_percent"]?.Value<decimal>() ?? 0;
+            decimal rate = cloisterData["rate"]?.Value<decimal>() ?? 0;
+
+            // Calculate total fee: e.g., rate * number of transactions in the block
+            decimal totalFee = rate * block.Transactions.Count;
+
+            // Get peers for the cloister
+            string selectPeers = $"SELECT * FROM cloister_peers WHERE name = \"{peerReference}\"";
+            database.UserQuery = new Query(selectPeers, QueryType.SELECT);
+            var peersResult = database.StringParser(database.UserQuery);
+            var peersData = JsonConvert.DeserializeObject<JObject>(peersResult);
+            //var peers = peersData?["data"]?.Select(p => p as JObject).ToList() ?? new List<JObject>();
+            var peers = peersData?["data"]?.OfType<JObject>().ToList() ?? new List<JObject>();
+            if (!peers.Any())
+            {
+                PrettyPrint.PrintWarning("No peers found for cloister. Skipping fee distribution.");
+                return;
+            }
+
+            // Distribute fees: each peer gets totalFee * their portionPercent
+            foreach (JObject peer in peers)
+            {
+                string name = "";
+                if (peer != null)
+                {
+                    name = peer["name"]?.Value<string>() ?? "";
+                }
+                decimal peerPortionPercent = peer?["portion_percent"]?.Value<decimal>() ?? 0;
+                decimal peerFee = totalFee * peerPortionPercent;
+                var feeTx = new Transaction(ReserveAccount, name, peerFee);
+                AddTransaction(feeTx);
+            }
+
+            // Mine the fee transactions in a new block
+            await MinePendingTransactions(peerNetwork, peerReference);
         }
 
         private async Task<bool> ProposeBlockAsync(Block proposedBlock, PeerNetwork? peerNetwork)
@@ -324,6 +388,28 @@ namespace ServerApp
             var regBlock = new RegistrationBlock(user, ip, peersHash, privateKey, publicKey);
             Registrations.Add(regBlock);
             PrettyPrint.PrintInfo($"User {user} registered with block hash: {regBlock.Hash}");
+
+            // Updated: Handle cloister setup if config enables it
+            var config = AppConfig.Load();
+            if (config.Cloistering && !string.IsNullOrEmpty(config.CloisterName))
+            {
+                // Insert into cloister_data (defaults)
+                string insertCloisterData = $"INSERT INTO cloister_data VALUES (\"{config.CloisterName}\", 0.1, 10, \"subscription\", \"monthly\")";
+                database.UserQuery = new Query(insertCloisterData, QueryType.INSERT);
+                database.StringParser(database.UserQuery);
+
+                // Insert into cloister_peers
+                string insertPeer = $"INSERT INTO cloister_peers VALUES (\"{config.CloisterName}\", 0.1, \"{publicKey}\")";
+                database.UserQuery = new Query(insertPeer, QueryType.INSERT);
+                database.StringParser(database.UserQuery);
+
+                // Insert into cloister_clients if applicable
+                string insertClient = $"INSERT INTO cloister_clients VALUES (\"{config.CloisterName}\", \"{publicKey}\", 10, \"subscription\")";
+                database.UserQuery = new Query(insertClient, QueryType.INSERT);
+                database.StringParser(database.UserQuery);
+
+                PrettyPrint.PrintSuccess($"Cloister setup completed for {config.CloisterName}. User {user} added.");
+            }
         }
 
         // New: AddLock function
@@ -526,6 +612,21 @@ namespace ServerApp
             var jCaptureResponse = JObject.Parse(responseString);
             return jCaptureResponse["status"]?.ToString() ?? ""; // Null check
         }
+
+        public static async Task<string> GetOrderStatusAsync(string token, string paypalOrderId, Environment environment)
+        {
+            var apiEndpoint = "https://api-m.sandbox.paypal.com/v2/checkout/orders/{0}";
+            if (environment == Environment.LIVE)
+            {
+                apiEndpoint = "https://api-m.paypal.com/v2/checkout/orders/{0}";
+            }
+            apiEndpoint = string.Format(apiEndpoint, paypalOrderId);
+            httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var response = await httpClient.GetAsync(apiEndpoint);
+            var responseString = await response.Content.ReadAsStringAsync();
+            var jOrder = JObject.Parse(responseString);
+            return jOrder["status"]?.ToString() ?? "";
+        }
     }
 
     // New: Config class for app settings
@@ -534,6 +635,10 @@ namespace ServerApp
         public bool EnablePortForwarding { get; set; } = false; // Default: disabled
         public int Port { get; set; } = 8080; // Default port
         public string PeerId { get; set; } = "Peer1"; // Default peer ID
+        public bool Cloistering { get; set; } = false; // Updated: Enable cloister functionality (formerly PeerPortion)
+        public string CloisterName { get; set; } = ""; // Updated: Cloister name (formerly MonasteryName)
+        public bool DbSync { get; set; } = false; // New: Enable database synchronization
+        public bool SubCircLock { get; set; } = false; // New: Subscription circulation lock
 
         public static AppConfig Load(string configPath = "config.json")
         {
@@ -764,6 +869,75 @@ namespace ServerApp
             return "127.0.0.1";
         }
 
+        // New: Sync databases with a specific peer
+        public async Task SyncDatabasesWithPeerAsync(string peerAddress)
+        {
+            try
+            {
+                var parts = peerAddress.Split(':');
+                using (TcpClient client = new TcpClient())
+                {
+                    await client.ConnectAsync(parts[0], int.Parse(parts[1]));
+                    using (NetworkStream stream = client.GetStream())
+                    using (StreamWriter writer = new StreamWriter(stream) { AutoFlush = true })
+                    using (StreamReader reader = new StreamReader(stream))
+                    {
+                        // Request sync
+                        await writer.WriteLineAsync("SYNC_DB");
+
+                        // Receive and process chain data
+                        string? chainData = await reader.ReadLineAsync();
+                        if (chainData != null && chainData.StartsWith("CHAIN:"))
+                        {
+                            var receivedChain = JsonConvert.DeserializeObject<List<Block>>(chainData.Substring(6));
+                            if (receivedChain != null && IsValidChain(receivedChain) && receivedChain.Count > blockchain.Chain.Count)
+                            {
+                                blockchain.Chain = receivedChain;
+                                PrettyPrint.PrintSuccess("Blockchain synced from peer.");
+                            }
+                        }
+
+                        // Receive and process cloister data
+                        string? cloisterData = await reader.ReadLineAsync();
+                        if (cloisterData != null && cloisterData.StartsWith("CLOISTER:"))
+                        {
+                            var receivedCloister = JsonConvert.DeserializeObject<JObject>(cloisterData.Substring(9));
+                            // Populate cloister_market (assuming receivedCloister is a list of cloister data)
+                            if (receivedCloister != null)
+                            {
+                                foreach (var item in receivedCloister["data"] ?? new JArray())
+                                {
+                                    string insertMarket = $"INSERT INTO cloister_market VALUES (\"{item["name"]}\", {item["rate"]}, \"{item["rate_type"]}\", \"{item["rate_cycle"]}\")";
+                                    Blockchain.database.UserQuery = new Query(insertMarket, QueryType.INSERT);
+                                    Blockchain.database.StringParser(Blockchain.database.UserQuery);
+                                }
+                                PrettyPrint.PrintSuccess("Cloister data synced and market populated.");
+                            } else 
+                            {
+                                PrettyPrint.PrintError("Cloister data cannot sync no cloister recieved.");
+                            }
+
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                PrettyPrint.PrintError($"Failed to sync databases with peer {peerAddress}: {ex.Message}");
+            }
+        }
+
+        // New: Sync with all known peers if db_sync is enabled
+        public async Task SyncAllDatabasesAsync()
+        {
+            var config = AppConfig.Load();
+            if (!config.DbSync) return;
+
+            foreach (var peer in knownPeers)
+            {
+                await SyncDatabasesWithPeerAsync(peer);
+            }
+        }
 
         private async Task HandleClientAsync(TcpClient client)
         {
@@ -808,6 +982,19 @@ namespace ServerApp
                         string receiptData = message.Substring(8);
                         File.WriteAllText(Path.Combine(blockchain.ReceiptsPath, "received_receipt.json"), receiptData);
                         PrettyPrint.PrintInfo("Received and saved receipt data.");
+                    }
+
+
+                    if (message == "SYNC_DB")
+                    {
+                        // Send chain and cloister data
+                        await writer.WriteLineAsync($"CHAIN:{JsonConvert.SerializeObject(blockchain.Chain)}");
+
+                        // Query and send cloister data
+                        string selectCloister = "SELECT * FROM cloister_data";
+                        Blockchain.database.UserQuery = new Query(selectCloister, QueryType.SELECT);
+                        var cloisterResult = Blockchain.database.StringParser(Blockchain.database.UserQuery);
+                        await writer.WriteLineAsync($"CLOISTER:{cloisterResult}");
                     }
                 }
             }
@@ -998,7 +1185,7 @@ namespace ServerApp
                     break;
                 case "register":
                     if (args.Length < 6 || args[1] == null || args[2] == null || args[3] == null || args[4] == null || args[5] == null) { Console.WriteLine("Usage: register <user> <ip> <peersHash> <privateKey> <publicKey>"); return; }
-                    RegisterUser(args[1], args[2], args[3], args[4], args[5]);
+                    blockchain.RegisterUser(args[1], args[2], args[3], args[4], args[5]);
                     break;
                 case "addlock":
                     if (args.Length < 2) { PrettyPrint.PrintError("Usage: addlock <blockid> or addlock \"<schema>\" [blockid]"); return; }
@@ -1072,10 +1259,80 @@ namespace ServerApp
                         PrettyPrint.PrintError($"Query error: {ex.Message}");
                     }
                     break;
+                case "syncdb":
+                    if (args.Length < 2) { PrettyPrint.PrintError("Usage: syncdb <peer_address>"); return; }
+                    if (peerNetwork != null)
+                    {
+                        await peerNetwork.SyncDatabasesWithPeerAsync(args[1]);
+                    } else 
+                    {
+                        // Handle the null case
+                        Console.Error.WriteLine("Error: peerNetwork is null.");
+                    }
+                    break;
+                case "syncall":
+                    if (peerNetwork != null)
+                    {
+                        await peerNetwork.SyncAllDatabasesAsync();
+                    } else 
+                    {
+                        // Handle the null case
+                        Console.Error.WriteLine("Error: peerNetwork is null.");
+                    }
+                    break;
+                case "preinstallcloister":
+                    PreInstallCloisterFramework();
+                    break;
                 default:
                     PrettyPrint.PrintWarning("Unknown action. Type 'help' for commands.");
                     break;
             }
+        }
+
+        // New: Pre-install cloister database framework
+        private static void PreInstallCloisterFramework()
+        {
+            // Create cloister_data table
+            string createCloisterData = @"CREATE TABLE cloister_data (
+                name VARCHAR,
+                portion_percent FLOAT,
+                rate INT,
+                rate_type VARCHAR,
+                rate_cycle VARCHAR
+            )";
+            database.UserQuery = new Query(createCloisterData, QueryType.CREATE);
+            database.StringParser(database.UserQuery);
+
+            // Create cloister_clients table
+            string createCloisterClients = @"CREATE TABLE cloister_clients (
+                name VARCHAR,
+                public_key VARCHAR,
+                rate INT,
+                subscription_block VARCHAR
+            )";
+            database.UserQuery = new Query(createCloisterClients, QueryType.CREATE);
+            database.StringParser(database.UserQuery);
+
+            // Create cloister_peers table
+            string createCloisterPeers = @"CREATE TABLE cloister_peers (
+                name VARCHAR,
+                portion_percent FLOAT,
+                public_key VARCHAR
+            )";
+            database.UserQuery = new Query(createCloisterPeers, QueryType.CREATE);
+            database.StringParser(database.UserQuery);
+
+            // Create cloister_market table
+            string createCloisterMarket = @"CREATE TABLE cloister_market (
+                name VARCHAR,
+                rate INT,
+                rate_type VARCHAR,
+                rate_cycle VARCHAR
+            )";
+            database.UserQuery = new Query(createCloisterMarket, QueryType.CREATE);
+            database.StringParser(database.UserQuery);
+
+            PrettyPrint.PrintSuccess("Cloister database framework pre-installed.");
         }
 
         // Updated functions to handle lock conditions
@@ -1088,13 +1345,47 @@ namespace ServerApp
                 // Proceed
                 var (paypalId, url) = await PayPalAPI.CreateOrderAsync(token, amount, "USD", environment, domain + "/payments/paypalOrderComplete", domain);
                 PrettyPrint.PrintInfo($"Redirect user to: {url}");
-                var status = await PayPalAPI.CaptureOrderAsync(token, paypalId, environment);
-                if (status == "COMPLETED")
+                
+                // Poll for approval
+                string status = "";
+                while (status != "APPROVED")
+                {
+                    await Task.Delay(5000); // Wait 5 seconds before checking again
+                    status = await PayPalAPI.GetOrderStatusAsync(token, paypalId, environment);
+                    PrettyPrint.PrintInfo($"Order status: {status}");
+                    if (status == "VOIDED" || status == "EXPIRED")
+                    {
+                        PrettyPrint.PrintError("Payment failed or expired.");
+                        return;
+                    }
+                }
+                
+                var captureStatus = await PayPalAPI.CaptureOrderAsync(token, paypalId, environment);
+                if (captureStatus == "COMPLETED")
                 {
                     var tx = new Transaction(Blockchain.ReserveAccount, buyer, amount) { PayPalOrderId = paypalId };
                     blockchain.AddTransaction(tx);
                     await blockchain.MinePendingTransactions(peerNetwork, $"PeerRef:{peerNetwork}");
                     var newBlock = blockchain.Chain.Last();
+
+                    // New: Check for sub_circ_lock
+                    var config = AppConfig.Load();
+                    if (config.SubCircLock)
+                    {
+                        // Lock the block if it's a donation subscription
+                        string selectClient = $"SELECT * FROM cloister_clients WHERE name = \"{buyer}\" AND subscription_block = \"donation\"";
+                        database.UserQuery = new Query(selectClient, QueryType.SELECT);
+                        var clientResult = database.StringParser(database.UserQuery);
+                        var clientData = JsonConvert.DeserializeObject<JObject>(clientResult);
+                        //if (clientData?["status"]?.ToString() == "success" && clientData["data"].Any())
+                        if (clientData?["status"]?.ToString() == "success" && (clientData["data"] ?? new JArray()).Any())
+                        {
+                            blockchain.AddLock(newBlock.BlockId);
+                            // Add constraints for data constrained receipts
+                            constraint.AddSchemaToReceipt(newBlock.BlockId, schema ?? "{}");
+                        }
+                    }
+
                     // Add schema to receipt if provided
                     if (!string.IsNullOrEmpty(schema))
                     {
@@ -1192,6 +1483,28 @@ namespace ServerApp
                 // Attempt to use provided keys
                 var regBlock = new RegistrationBlock(user, ip, peersHash, privateKey, publicKey);
                 blockchain.RegisterUser(user, ip, peersHash, privateKey, publicKey);
+
+                // Updated: Handle cloister setup if config enables it
+                var config = AppConfig.Load();
+                if (config.Cloistering && !string.IsNullOrEmpty(config.CloisterName))
+                {
+                    // Insert into cloister_data (defaults)
+                    string insertCloisterData = $"INSERT INTO cloister_data VALUES (\"{config.CloisterName}\", 0.1, 10, \"subscription\", \"monthly\")";
+                    database.UserQuery = new Query(insertCloisterData, QueryType.INSERT);
+                    database.StringParser(database.UserQuery);
+
+                    // Insert into cloister_peers
+                    string insertPeer = $"INSERT INTO cloister_peers VALUES (\"{config.CloisterName}\", 0.1, \"{publicKey}\")";
+                    database.UserQuery = new Query(insertPeer, QueryType.INSERT);
+                    database.StringParser(database.UserQuery);
+
+                    // Insert into cloister_clients if applicable
+                    string insertClient = $"INSERT INTO cloister_clients VALUES (\"{config.CloisterName}\", \"{publicKey}\", 10, \"subscription\")";
+                    database.UserQuery = new Query(insertClient, QueryType.INSERT);
+                    database.StringParser(database.UserQuery);
+
+                    PrettyPrint.PrintSuccess($"Cloister setup completed for {config.CloisterName}. User {user} added.");
+                }
             }
             catch (Exception ex)
             {
@@ -1208,8 +1521,8 @@ namespace ServerApp
                         Console.WriteLine("Failed to generate RSA keys.");
                         return;
                     }
-                    
-    
+                        
+        
                     PrettyPrint.PrintInfo("Generated Private Key (use securely):");
                     PrettyPrint.PrintInfo(newPrivateKey);
                     PrettyPrint.PrintInfo("Generated Public Key:");
@@ -1218,6 +1531,29 @@ namespace ServerApp
                     // Register with generated keys
                     var regBlock = new RegistrationBlock(user, ip, peersHash, newPrivateKey, newPublicKey);
                     blockchain.RegisterUser(user, ip, peersHash, newPrivateKey, newPublicKey);
+
+                    // Updated: Handle cloister setup if config enables it (same as above)
+                    var config = AppConfig.Load();
+                    if (config.Cloistering && !string.IsNullOrEmpty(config.CloisterName))
+                    {
+                        // Insert into cloister_data (defaults)
+                        string insertCloisterData = $"INSERT INTO cloister_data VALUES (\"{config.CloisterName}\", 0.1, 10, \"subscription\", \"monthly\")";
+                        database.UserQuery = new Query(insertCloisterData, QueryType.INSERT);
+                        database.StringParser(database.UserQuery);
+
+                        // Insert into cloister_peers
+                        string insertPeer = $"INSERT INTO cloister_peers VALUES (\"{config.CloisterName}\", 0.1, \"{publicKey}\")";
+                        database.UserQuery = new Query(insertPeer, QueryType.INSERT);
+                        database.StringParser(database.UserQuery);
+
+                        // Insert into cloister_clients if applicable
+                        string insertClient = $"INSERT INTO cloister_clients VALUES (\"{config.CloisterName}\", \"{publicKey}\", 10, \"subscription\")";
+                        database.UserQuery = new Query(insertClient, QueryType.INSERT);
+                        database.StringParser(database.UserQuery);
+
+                        PrettyPrint.PrintSuccess($"Cloister setup completed for {config.CloisterName}. User {user} added.");
+                    }
+
                     PrettyPrint.PrintSuccess($"User {user} registered with block hash: {regBlock.Hash}");
                 }
             }

@@ -3,6 +3,17 @@
 ## Overview
 SuprabullionApp is a C# console application implementing a peer-to-peer blockchain with PayPal integration, user registration, block locking, and querying. It features an interactive command-line interface (CLI), peer networking with persistence, config file support, and manual UPnP port forwarding for NAT traversal. The app uses SHA256 hashing for security, stores data in JSON format, and supports RSA encryption for user data.
 
+## DB Cloistering for Applications on SupraBullion Network
+cloistering is the seclusion of data into a closed off flock of 
+peers that permits db and application differentiation while permitting 
+the covered passage to interact with market rates of other cloisters.
+
+the flock of peers group together and decides portioning, presents an interface, 
+and partakes in the market of subscribers looking to gain insights into the 
+cloister of peers or without insights but with a service, 
+while market facilitators may gain insights on cloisters rates as 
+each cloister seeks to gain contracts with subscribers mitigated by the public ledger.  
+
 ## TODO
 - class out Program.cs 
 - Unit test classes 
@@ -289,5 +300,3 @@ With all updates applied:
    - `> buy Alice 50.00 "{\"constraint\": \"met\"}"` – Buys with schema, checks constraints.
 3. **Verify Output**: Logs should be colored and timestamped (e.g., green for success, red for errors).
 4. **Edge Cases**: Test invalid schemas, missing files, or network operations.
-
-If everything works, your blockchain app now supports advanced database operations with schema validation and pretty logging! If you encounter issues or need further tweaks, share the error logs or code snippets.
